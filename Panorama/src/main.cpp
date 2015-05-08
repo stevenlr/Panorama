@@ -9,6 +9,8 @@
 #include <opencv2/calib3d/calib3d.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
 
+#include "Scene.h"
+
 #define NB_IMAGES 2
 
 using namespace std;
@@ -19,25 +21,25 @@ int main(int argc, char *argv[])
 	initModule_features2d();
 	initModule_nonfree();
 
-	string sourceImagesNames[NB_IMAGES];
-	Mat sourceImages[NB_IMAGES];
+	Scene scene(NB_IMAGES);
 
-	sourceImagesNames[0] = "bus1";
-	sourceImagesNames[1] = "bus2";
+	string sourceImagesNames[NB_IMAGES];
+	sourceImagesNames[0] = "mountain1";
+	sourceImagesNames[1] = "mountain2";
 
 	for (int i = 0; i < NB_IMAGES; ++i) {
-		sourceImages[i] = imread("../source_images/" + sourceImagesNames[i] + ".jpg");
+		Mat img = imread("../source_images/" + sourceImagesNames[i] + ".jpg");
 
-		if (!sourceImages[i].data) {
+		if (!img.data) {
 			cout << "Error when opening image " << sourceImagesNames[i] << endl;
+			return 1;
 		}
 
-		stringstream str;
-		str << "source " << sourceImagesNames[i];
-
-		namedWindow(str.str());
-		imshow(str.str(), sourceImages[i]);
+		scene.setImage(i, img);
 	}
+
+	scene.setParent(0, -1);
+	scene.setTransform(0, Mat::eye(3, 3, CV_64F));
 
 	Ptr<FeatureDetector> featureDetector = FeatureDetector::create("SIFT");
 	Ptr<DescriptorExtractor> descriptorExtractor = DescriptorExtractor::create("SIFT");
@@ -46,17 +48,17 @@ int main(int argc, char *argv[])
 	Mat featureDescriptors[NB_IMAGES];
 
 	for (int i = 0; i < NB_IMAGES; ++i) {
-		featureDetector->detect(sourceImages[i], keypoints[i]);
-		descriptorExtractor->compute(sourceImages[i], keypoints[i], featureDescriptors[i]);
+		featureDetector->detect(scene.getImage(i), keypoints[i]);
+		descriptorExtractor->compute(scene.getImage(i), keypoints[i], featureDescriptors[i]);
 	}
 
-	const int image1 = 0;
-	const int image2 = 1;
+	const int sceneImage = 0;
+	const int objectImage = 1;
 
 	Ptr<DescriptorMatcher> descriptorMatcher = DescriptorMatcher::create("FlannBased");
 	vector<DMatch> matches;
 
-	descriptorMatcher->match(featureDescriptors[image2], featureDescriptors[image1], matches);
+	descriptorMatcher->match(featureDescriptors[objectImage], featureDescriptors[sceneImage], matches);
 
 	float minMatchDist = 10000;
 
@@ -76,31 +78,22 @@ int main(int argc, char *argv[])
 		}
 	}
 
-	Mat matchImage;
-
-	drawMatches(sourceImages[image2], keypoints[image2],
-				sourceImages[image1], keypoints[image1],
-				goodMatches, matchImage,
-				Scalar::all(-1), Scalar::all(-1), vector<char>(),
-				DrawMatchesFlags::NOT_DRAW_SINGLE_POINTS);
-
-	namedWindow("matches");
-	imshow("matches", matchImage);
-
 	vector<Point2f> points[2];
 
 	for (int i = 0; i < goodMatches.size(); ++i) {
-		points[0].push_back(keypoints[image2][goodMatches[i].queryIdx].pt);
-		points[1].push_back(keypoints[image1][goodMatches[i].trainIdx].pt);
+		points[0].push_back(keypoints[sceneImage][goodMatches[i].trainIdx].pt);
+		points[1].push_back(keypoints[objectImage][goodMatches[i].queryIdx].pt);
 	}
 
-	Mat homography = findHomography(points[0], points[1], CV_RANSAC);
-	Mat transformedImage;
+	Mat homography = findHomography(points[1], points[0], CV_RANSAC);
 
-	warpPerspective(sourceImages[image2], transformedImage, homography, sourceImages[image2].size());
+	scene.setParent(objectImage, sceneImage);
+	scene.setTransform(objectImage, homography);
 
-	namedWindow("transformed");
-	imshow("transformed", transformedImage);
+	Mat panorama = scene.composePanorama();
+
+	namedWindow("panorama", WINDOW_AUTOSIZE);
+	imshow("panorama", panorama);
 
 	waitKey(0);
 
