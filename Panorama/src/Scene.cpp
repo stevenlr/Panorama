@@ -11,6 +11,7 @@ Scene::Scene(int nbImages)
 
 	_nbImages = nbImages;
 	_images.resize(_nbImages);
+	_imagesBW.resize(_nbImages);
 	
 	for (int i = 0; i < _nbImages; ++i) {
 		_transform.push_back(Mat::eye(3, 3, CV_64F));
@@ -22,14 +23,25 @@ void Scene::setImage(int i, const Mat &img)
 {
 	assert(i >= 0 && i < _nbImages);
 
+	Mat imgBW;
+
 	_images[i] = img;
+	cvtColor(img, imgBW, CV_RGB2GRAY);
+	_imagesBW[i] = imgBW;
 }
 
-const Mat &Scene::getImage(int i)
+const Mat &Scene::getImage(int i) const
 {
 	assert(i >= 0 && i < _nbImages);
 
 	return _images[i];
+}
+
+const cv::Mat &Scene::getImageBW(int i) const
+{
+	assert(i >= 0 && i < _nbImages);
+
+	return _imagesBW[i];
 }
 
 int Scene::getParent(int image) const

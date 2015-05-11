@@ -71,17 +71,14 @@ int main(int argc, char *argv[])
 		scene.setImage(i, img);
 	}
 
-	scene.setParent(0, -1);
-	scene.setTransform(0, Mat::eye(3, 3, CV_64F));
-
 	Ptr<FeatureDetector> featureDetector = FeatureDetector::create("SIFT");
 	Ptr<DescriptorExtractor> descriptorExtractor = DescriptorExtractor::create("SIFT");
 
 	ImageDescriptor descriptors[NB_IMAGES];
 
 	for (int i = 0; i < NB_IMAGES; ++i) {
-		featureDetector->detect(scene.getImage(i), descriptors[i].keypoints);
-		descriptorExtractor->compute(scene.getImage(i), descriptors[i].keypoints, descriptors[i].featureDescriptor);
+		featureDetector->detect(scene.getImageBW(i), descriptors[i].keypoints);
+		descriptorExtractor->compute(scene.getImageBW(i), descriptors[i].keypoints, descriptors[i].featureDescriptor);
 	}
 
 	list<MatchMatrixElement> matchMatrix;
@@ -140,6 +137,8 @@ int main(int argc, char *argv[])
 
 	namedWindow("panorama", WINDOW_AUTOSIZE);
 	imshow("panorama", panorama);
+
+	imwrite("output.jpg", panorama);
 
 	waitKey(0);
 

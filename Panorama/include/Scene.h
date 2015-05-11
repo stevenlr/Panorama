@@ -13,7 +13,8 @@ public:
 	Scene &operator=(const Scene &) = delete;
 
 	void setImage(int i, const cv::Mat &img);
-	const cv::Mat &getImage(int i);
+	const cv::Mat &getImage(int i) const;
+	const cv::Mat &getImageBW(int i) const;
 
 	int getParent(int image) const;
 	void setParent(int image, int parent);
@@ -24,6 +25,7 @@ public:
 private:
 	int _nbImages;
 	std::vector<cv::Mat> _images;
+	std::vector<cv::Mat> _imagesBW;
 	std::vector<int> _parent;
 	std::vector<cv::Mat> _transform;
 };
