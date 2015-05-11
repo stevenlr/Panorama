@@ -113,9 +113,6 @@ int main(int argc, char *argv[])
 			continue;
 		}
 
-		Mat matchImage;
-		vector<DMatch> goodMatches;
-
 		Mat homography = computeHomography(descriptors[sceneImage], descriptors[objectImage], elt.second);
 
 		scene.setTransform(objectImage, homography);
