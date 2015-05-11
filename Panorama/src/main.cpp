@@ -2,6 +2,8 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include <list>
+#include <set>
 
 #include <opencv2/core/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
@@ -10,28 +12,59 @@
 #include <opencv2/imgproc/imgproc.hpp>
 
 #include "Scene.h"
+#include "ImageMatching.h"
 
-#define NB_IMAGES 2
+#define NB_IMAGES 3
 
 using namespace std;
 using namespace cv;
+
+typedef pair<pair<int, int>, ImageMatchInfos> MatchMatrixElement;
+
+bool compareMatchMatrixElements(const MatchMatrixElement &first, const MatchMatrixElement &second)
+{
+	return first.second.avgDistance < second.second.avgDistance;
+}
+
+bool checkCycle(const Scene &scene, int image)
+{
+	set<int> stack;
+	int current = image;
+
+	stack.insert(image);
+
+	while (current != -1) {
+		current = scene.getParent(current);
+
+		if (stack.find(current) != stack.end()) {
+			return true;
+		}
+
+		stack.insert(current);
+	}
+
+	return false;
+}
 
 int main(int argc, char *argv[])
 {
 	initModule_features2d();
 	initModule_nonfree();
 
+	assert(NB_IMAGES > 1);
+
 	Scene scene(NB_IMAGES);
 
 	string sourceImagesNames[NB_IMAGES];
-	sourceImagesNames[0] = "mountain1";
-	sourceImagesNames[1] = "mountain2";
+	sourceImagesNames[0] = "office1";
+	sourceImagesNames[1] = "office2";
+	sourceImagesNames[2] = "office3";
 
 	for (int i = 0; i < NB_IMAGES; ++i) {
 		Mat img = imread("../source_images/" + sourceImagesNames[i] + ".jpg");
 
 		if (!img.data) {
-			cout << "Error when opening image " << sourceImagesNames[i] << endl;
+			cerr << "Error when opening image " << sourceImagesNames[i] << endl;
 			return 1;
 		}
 
@@ -44,51 +77,64 @@ int main(int argc, char *argv[])
 	Ptr<FeatureDetector> featureDetector = FeatureDetector::create("SIFT");
 	Ptr<DescriptorExtractor> descriptorExtractor = DescriptorExtractor::create("SIFT");
 
-	vector<KeyPoint> keypoints[NB_IMAGES];
-	Mat featureDescriptors[NB_IMAGES];
+	ImageDescriptor descriptors[NB_IMAGES];
 
 	for (int i = 0; i < NB_IMAGES; ++i) {
-		featureDetector->detect(scene.getImage(i), keypoints[i]);
-		descriptorExtractor->compute(scene.getImage(i), keypoints[i], featureDescriptors[i]);
+		featureDetector->detect(scene.getImage(i), descriptors[i].keypoints);
+		descriptorExtractor->compute(scene.getImage(i), descriptors[i].keypoints, descriptors[i].featureDescriptor);
 	}
 
-	const int sceneImage = 0;
-	const int objectImage = 1;
+	list<MatchMatrixElement> matchMatrix;
 
-	Ptr<DescriptorMatcher> descriptorMatcher = DescriptorMatcher::create("FlannBased");
-	vector<DMatch> matches;
+	for (int i = 0; i < NB_IMAGES; ++i) {
+		for (int j = 0; j < NB_IMAGES; ++j) {
+			if (i == j) {
+				continue;
+			}
 
-	descriptorMatcher->match(featureDescriptors[objectImage], featureDescriptors[sceneImage], matches);
+			ImageMatchInfos matchInfos = matchImages(descriptors[j], descriptors[i]);
 
-	float minMatchDist = 10000;
-
-	for (int i = 0; i < matches.size(); ++i) {
-		float dist = matches[i].distance;
-
-		if (dist < minMatchDist) {
-			minMatchDist = dist;
+			matchMatrix.push_back(make_pair(make_pair(i, j), matchInfos));
+			matchMatrix.push_back(make_pair(make_pair(j, i), matchInfos));
 		}
 	}
 
-	vector<DMatch> goodMatches;
+	int imageMatched = 0;
 
-	for (int i = 0; i < matches.size(); ++i) {
-		if (matches[i].distance < 2.5 * minMatchDist) {
-			goodMatches.push_back(matches[i]);
+	matchMatrix.sort(compareMatchMatrixElements);
+
+	while (imageMatched < NB_IMAGES - 1) {
+		const MatchMatrixElement &elt = matchMatrix.front();
+		int objectImage = elt.first.first;
+		int sceneImage = elt.first.second;
+
+		scene.setParent(objectImage, sceneImage);
+
+		if (checkCycle(scene, objectImage)) {
+			scene.setParent(objectImage, -1);
+			matchMatrix.erase(matchMatrix.begin());
+			continue;
 		}
+
+		Mat matchImage;
+		vector<DMatch> goodMatches;
+
+		Mat homography = computeHomography(descriptors[sceneImage], descriptors[objectImage], elt.second);
+
+		scene.setTransform(objectImage, homography);
+		
+		list<MatchMatrixElement>::iterator it = matchMatrix.begin();
+
+		while (it != matchMatrix.end()) {
+			if (it->first.first == objectImage) {
+				it = matchMatrix.erase(it);
+			} else {
+				++it;
+			}
+		}
+
+		imageMatched++;
 	}
-
-	vector<Point2f> points[2];
-
-	for (int i = 0; i < goodMatches.size(); ++i) {
-		points[0].push_back(keypoints[sceneImage][goodMatches[i].trainIdx].pt);
-		points[1].push_back(keypoints[objectImage][goodMatches[i].queryIdx].pt);
-	}
-
-	Mat homography = findHomography(points[1], points[0], CV_RANSAC);
-
-	scene.setParent(objectImage, sceneImage);
-	scene.setTransform(objectImage, homography);
 
 	Mat panorama = scene.composePanorama();
 

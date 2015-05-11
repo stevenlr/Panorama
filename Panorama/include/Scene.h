@@ -15,6 +15,7 @@ public:
 	void setImage(int i, const cv::Mat &img);
 	const cv::Mat &getImage(int i);
 
+	int getParent(int image) const;
 	void setParent(int image, int parent);
 	void setTransform(int image, const cv::Mat &transform);
 	cv::Mat composePanorama();

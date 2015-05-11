@@ -32,6 +32,13 @@ const Mat &Scene::getImage(int i)
 	return _images[i];
 }
 
+int Scene::getParent(int image) const
+{
+	assert(image >= 0 && image < _nbImages);
+
+	return _parent[image];
+}
+
 void Scene::setParent(int image, int parent)
 {
 	assert(image >= 0 && image < _nbImages);
@@ -59,7 +66,7 @@ Mat Scene::getFullTransform(int image) const
 		return _transform[image].clone();
 	}
 }
-#include <iostream>
+
 Mat Scene::composePanorama()
 {
 	vector<Point2f> srcPoints(4);
