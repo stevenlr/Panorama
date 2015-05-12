@@ -134,8 +134,10 @@ int main(int argc, char *argv[])
 
 			ImageMatchInfos matchInfos = matchImages(descriptors[j], descriptors[i]);
 
-			matchMatrix.push_back(make_pair(make_pair(i, j), matchInfos));
-			matchMatrix.push_back(make_pair(make_pair(j, i), matchInfos));
+			if (matchInfos.matches.size() >= 4) {
+				matchMatrix.push_back(make_pair(make_pair(i, j), matchInfos));
+				matchMatrix.push_back(make_pair(make_pair(j, i), matchInfos));
+			}
 		}
 	}
 
