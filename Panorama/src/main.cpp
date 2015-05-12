@@ -3,7 +3,6 @@
 #include <string>
 #include <vector>
 #include <list>
-#include <set>
 
 #include <opencv2/core/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
@@ -21,33 +20,6 @@
 
 using namespace std;
 using namespace cv;
-
-typedef pair<pair<int, int>, ImageMatchInfos> MatchMatrixElement;
-
-bool compareMatchMatrixElements(const MatchMatrixElement &first, const MatchMatrixElement &second)
-{
-	return first.second.avgDistance < second.second.avgDistance;
-}
-
-bool checkCycle(const Scene &scene, int image)
-{
-	set<int> stack;
-	int current = image;
-
-	stack.insert(image);
-
-	while (current != -1) {
-		current = scene.getParent(current);
-
-		if (stack.find(current) != stack.end()) {
-			return true;
-		}
-
-		stack.insert(current);
-	}
-
-	return false;
-}
 
 void cameraPoseFromHomography(const Mat &H, Mat &pose)
 {
@@ -86,6 +58,56 @@ void findFocalLength(const Mat &homography, vector<double> &focalLengths)
 
 	if (ok0 && ok1) {
 		focalLengths.push_back(sqrt(f0 * f1));
+	}
+}
+
+double getMedianFocalLength(vector<double> &focalLengths)
+{
+	double focalLength;
+	int numFocalLengths = focalLengths.size();
+
+	std::sort(focalLengths.begin(), focalLengths.end());
+
+	if (focalLengths.size() % 2 == 0) {
+		focalLength = (focalLengths[numFocalLengths / 2 - 1] + focalLengths[numFocalLengths / 2]) / 2;
+	} else {
+		focalLength = focalLengths[numFocalLengths / 2];
+	}
+
+	return focalLength;
+}
+
+void findAnglesFromPose(const Mat &pose, double &rx, double &ry, double &rz)
+{
+	if (abs(pose.at<double>(2, 0)) != 1) {
+		double y1 = -asin(pose.at<double>(2, 0));
+		double y2 = PI - y1;
+
+		double x1 = atan2(pose.at<double>(2, 1) / cos(y1), pose.at<double>(2, 2) / cos(y1));
+		double x2 = atan2(pose.at<double>(2, 1) / cos(y2), pose.at<double>(2, 2) / cos(y2));
+
+		double z1 = atan2(pose.at<double>(1, 0) / cos(y1), pose.at<double>(1, 1) / cos(y1));
+		double z2 = atan2(pose.at<double>(1, 0) / cos(y2), pose.at<double>(1, 1) / cos(y2));
+
+		if (abs(x1) < abs(x2)) {
+			rx = x1;
+			ry = y1;
+			rz = z1;
+		} else {
+			rx = x2;
+			ry = y2;
+			rz = z2;
+		}
+	} else {
+		rz = 0;
+
+		if (pose.at<double>(2, 0) == -1) {
+			ry = PI / 2;
+			rz = atan2(pose.at<double>(0, 1), pose.at<double>(0, 2));
+		} else {
+			ry = -PI / 2;
+			rz = atan2(-pose.at<double>(0, 1), -pose.at<double>(0, 2));
+		}
 	}
 }
 
@@ -153,7 +175,7 @@ int main(int argc, char *argv[])
 
 		scene.setParent(objectImage, sceneImage);
 
-		if (checkCycle(scene, objectImage)) {
+		if (scene.checkCycle(objectImage)) {
 			scene.setParent(objectImage, -1);
 			matchMatrix.erase(matchMatrix.begin());
 			continue;
@@ -161,42 +183,10 @@ int main(int argc, char *argv[])
 
 		Mat homography = computeHomography(descriptors[sceneImage], descriptors[objectImage], elt.second);
 		Mat pose;
-
-		cameraPoseFromHomography(homography, pose);
-
 		double rx, ry, rz;
 
-		if (abs(pose.at<double>(2, 0)) != 1) {
-			double y1 = -asin(pose.at<double>(2, 0));
-			double y2 = PI - y1;
-
-			double x1 = atan2(pose.at<double>(2, 1) / cos(y1), pose.at<double>(2, 2) / cos(y1));
-			double x2 = atan2(pose.at<double>(2, 1) / cos(y2), pose.at<double>(2, 2) / cos(y2));
-
-			double z1 = atan2(pose.at<double>(1, 0) / cos(y1), pose.at<double>(1, 1) / cos(y1));
-			double z2 = atan2(pose.at<double>(1, 0) / cos(y2), pose.at<double>(1, 1) / cos(y2));
-
-			if (abs(x1) < abs(x2)) {
-				rx = x1;
-				ry = y1;
-				rz = z1;
-			} else {
-				rx = x2;
-				ry = y2;
-				rz = z2;
-			}
-		} else {
-			rz = 0;
-
-			if (pose.at<double>(2, 0) == -1) {
-				ry = PI / 2;
-				rz = atan2(pose.at<double>(0, 1), pose.at<double>(0, 2));
-			} else {
-				ry = -PI / 2;
-				rz = atan2(-pose.at<double>(0, 1), -pose.at<double>(0, 2));
-			}
-		}
-
+		cameraPoseFromHomography(homography, pose);
+		findAnglesFromPose(pose, rx, ry, rz);
 		findFocalLength(homography, focalLengths);
 
 		scene.setTransform(objectImage, homography);
@@ -214,18 +204,7 @@ int main(int argc, char *argv[])
 		imageMatched++;
 	}
 
-	double focalLength;
-	int numFocalLengths = focalLengths.size();
-
-	std::sort(focalLengths.begin(), focalLengths.end());
-
-	if (focalLengths.size() % 2 == 0) {
-		focalLength = (focalLengths[numFocalLengths / 2 - 1] + focalLengths[numFocalLengths / 2]) / 2;
-	} else {
-		focalLength = focalLengths[numFocalLengths / 2];
-	}
-
-	cout << focalLength << endl;
+	double focalLength = getMedianFocalLength(focalLengths);
 
 	for (int i = 0; i < NB_IMAGES; ++i) {
 		double fov = 2 * atan(scene.getImage(i).size().width / focalLength / 2);

@@ -3,6 +3,11 @@
 using namespace std;
 using namespace cv;
 
+bool compareMatchMatrixElements(const MatchMatrixElement &first, const MatchMatrixElement &second)
+{
+	return first.second.avgDistance < second.second.avgDistance;
+}
+
 ImageMatchInfos matchImages(const ImageDescriptor &sceneDescriptor, const ImageDescriptor &objectDescriptor)
 {
 	ImageMatchInfos matchInfos;

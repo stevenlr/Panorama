@@ -21,6 +21,7 @@ public:
 	void setTransform(int image, const cv::Mat &transform);
 	cv::Mat composePanorama();
 	cv::Mat getFullTransform(int image) const;
+	bool checkCycle(int image) const;
 
 private:
 	int _nbImages;

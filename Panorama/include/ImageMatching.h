@@ -17,6 +17,9 @@ struct ImageMatchInfos {
 	std::vector<cv::DMatch> matches;
 };
 
+typedef std::pair<std::pair<int, int>, ImageMatchInfos> MatchMatrixElement;
+
+bool compareMatchMatrixElements(const MatchMatrixElement &first, const MatchMatrixElement &second);
 ImageMatchInfos matchImages(const ImageDescriptor &sceneDescriptor, const ImageDescriptor &objectDescriptor);
 cv::Mat computeHomography(const ImageDescriptor &sceneDescriptor, const ImageDescriptor &objectDescriptor, const ImageMatchInfos &match);
 

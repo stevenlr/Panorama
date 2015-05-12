@@ -1,5 +1,7 @@
 #include "Scene.h"
 
+#include <set>
+
 #include <opencv2/imgproc/imgproc.hpp>
 
 using namespace std;
@@ -135,4 +137,24 @@ Mat Scene::composePanorama()
 	}
 
 	return finalImage;
+}
+
+bool Scene::checkCycle(int image) const
+{
+	set<int> stack;
+	int current = image;
+
+	stack.insert(image);
+
+	while (current != -1) {
+		current = getParent(current);
+
+		if (stack.find(current) != stack.end()) {
+			return true;
+		}
+
+		stack.insert(current);
+	}
+
+	return false;
 }
