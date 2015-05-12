@@ -113,11 +113,36 @@ int main(int argc, char *argv[])
 	}
 
 	double focalLength = getMedianFocalLength(focalLengths);
+	int projSizeX = 360 * 3;
+	int projSizeY = 180 * 3;
 
-	for (int i = 0; i < NB_IMAGES; ++i) {
-		double fov = 2 * atan(scene.getImage(i).size().width / focalLength / 2);
+	for (int i = 0; i < 1; ++i) {
+		Mat img = scene.getImage(i);
+		double hfovx = atan(img.size().width / focalLength / 2) * projSizeX / (PI * 2);
+		double hfovy = atan(img.size().height / focalLength / 2) * projSizeY / (PI * 2);
 
-		cout << fov * 180 / PI << endl;
+		Mat map(Size(projSizeX, projSizeY), CV_32FC2, Scalar(-1));
+
+		for (int x = 0; x < projSizeX; ++x) {
+			double angleX = ((double) x / projSizeX - 0.5) * PI;
+			double projX = tan(angleX) * focalLength;
+
+			for (int y = 0; y < projSizeY; ++y) {
+				double angleY = ((double) y / projSizeY - 0.5) * PI / 2;
+				double projY = tan(angleY) * focalLength * img.size().width / img.size().height;
+
+				Vec2f &elt = map.at<Vec2f>(x, y);
+
+				map.at<Vec2f>(y, x)[0] = static_cast<float>(projX);
+				map.at<Vec2f>(y, x)[1] = static_cast<float>(projY);
+			}
+		}
+
+		Mat img2(Size(projSizeX, projSizeY), CV_8UC3);
+
+		remap(img, img2, map, Mat(), INTER_LINEAR, BORDER_TRANSPARENT);
+		namedWindow(sourceImagesNames[i], WINDOW_AUTOSIZE);
+		imshow(sourceImagesNames[i], img2);
 	}
 
 	Mat panorama = scene.composePanorama();
