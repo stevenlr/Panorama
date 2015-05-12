@@ -227,6 +227,12 @@ int main(int argc, char *argv[])
 
 	cout << focalLength << endl;
 
+	for (int i = 0; i < NB_IMAGES; ++i) {
+		double fov = 2 * atan(scene.getImage(i).size().width / focalLength / 2);
+
+		cout << fov * 180 / PI << endl;
+	}
+
 	Mat panorama = scene.composePanorama();
 
 	namedWindow("panorama", WINDOW_AUTOSIZE);
