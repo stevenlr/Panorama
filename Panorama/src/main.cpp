@@ -10,6 +10,7 @@
 #include <opencv2/nonfree/nonfree.hpp>
 #include <opencv2/calib3d/calib3d.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
+#include <opencv2/stitching/detail/autocalib.hpp>
 
 #define PI 3.14159265358979323846
 
@@ -76,6 +77,18 @@ void cameraPoseFromHomography(const Mat &H, Mat &pose)
 	pose.col(3) = H.col(2) / tnorm;
 }
 
+void findFocalLength(const Mat &homography, vector<double> &focalLengths)
+{
+	double f0, f1;
+	bool ok0, ok1;
+
+	detail::focalsFromHomography(homography, f0, f1, ok0, ok1);
+
+	if (ok0 && ok1) {
+		focalLengths.push_back(sqrt(f0 * f1));
+	}
+}
+
 int main(int argc, char *argv[])
 {
 	initModule_features2d();
@@ -127,6 +140,7 @@ int main(int argc, char *argv[])
 	}
 
 	int imageMatched = 0;
+	vector<double> focalLengths;
 
 	matchMatrix.sort(compareMatchMatrixElements);
 
@@ -181,7 +195,7 @@ int main(int argc, char *argv[])
 			}
 		}
 
-		cout << rx * 180 / PI << " " << ry * 180 / PI << " " << rz * 180 / PI << endl;
+		findFocalLength(homography, focalLengths);
 
 		scene.setTransform(objectImage, homography);
 		
@@ -197,6 +211,19 @@ int main(int argc, char *argv[])
 
 		imageMatched++;
 	}
+
+	double focalLength;
+	int numFocalLengths = focalLengths.size();
+
+	std::sort(focalLengths.begin(), focalLengths.end());
+
+	if (focalLengths.size() % 2 == 0) {
+		focalLength = (focalLengths[numFocalLengths / 2 - 1] + focalLengths[numFocalLengths / 2]) / 2;
+	} else {
+		focalLength = focalLengths[numFocalLengths / 2];
+	}
+
+	cout << focalLength << endl;
 
 	Mat panorama = scene.composePanorama();
 
