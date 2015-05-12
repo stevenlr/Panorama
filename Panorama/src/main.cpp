@@ -29,9 +29,9 @@ int main(int argc, char *argv[])
 	Scene scene(NB_IMAGES);
 
 	string sourceImagesNames[NB_IMAGES];
-	sourceImagesNames[0] = "office1";
-	sourceImagesNames[1] = "office2";
-	sourceImagesNames[2] = "office3";
+	sourceImagesNames[0] = "balcony0";
+	sourceImagesNames[1] = "balcony1";
+	sourceImagesNames[2] = "balcony2";
 
 	for (int i = 0; i < NB_IMAGES; ++i) {
 		Mat img = imread("../source_images/" + sourceImagesNames[i] + ".jpg");
@@ -116,10 +116,8 @@ int main(int argc, char *argv[])
 	int projSizeX = 360 * 3;
 	int projSizeY = 180 * 3;
 
-	for (int i = 0; i < 1; ++i) {
+	for (int i = 0; i < NB_IMAGES; ++i) {
 		Mat img = scene.getImage(i);
-		double hfovx = atan(img.size().width / focalLength / 2) * projSizeX / (PI * 2);
-		double hfovy = atan(img.size().height / focalLength / 2) * projSizeY / (PI * 2);
 
 		Mat map(Size(projSizeX, projSizeY), CV_32FC2, Scalar(-1));
 
@@ -129,12 +127,10 @@ int main(int argc, char *argv[])
 
 			for (int y = 0; y < projSizeY; ++y) {
 				double angleY = ((double) y / projSizeY - 0.5) * PI / 2;
-				double projY = tan(angleY) * focalLength * img.size().width / img.size().height;
+				double projY = tan(angleY) / cos(angleX) * focalLength;
 
-				Vec2f &elt = map.at<Vec2f>(x, y);
-
-				map.at<Vec2f>(y, x)[0] = static_cast<float>(projX);
-				map.at<Vec2f>(y, x)[1] = static_cast<float>(projY);
+				map.at<Vec2f>(y, x)[0] = static_cast<float>(projX + img.size().width / 2);
+				map.at<Vec2f>(y, x)[1] = static_cast<float>(projY + img.size().height / 2);
 			}
 		}
 
@@ -146,9 +142,6 @@ int main(int argc, char *argv[])
 	}
 
 	Mat panorama = scene.composePanorama();
-
-	namedWindow("panorama", WINDOW_AUTOSIZE);
-	imshow("panorama", panorama);
 
 	imwrite("output.jpg", panorama);
 
