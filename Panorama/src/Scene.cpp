@@ -70,6 +70,13 @@ void Scene::setTransform(int image, const Mat &transform)
 	_transform[image] = transform;
 }
 
+const cv::Mat &Scene::getTransform(int image) const
+{
+	assert(image >= 0 && image < _nbImages);
+
+	return _transform[image];
+}
+
 Mat Scene::getFullTransform(int image) const
 {
 	assert(image >= 0 && image < _nbImages);

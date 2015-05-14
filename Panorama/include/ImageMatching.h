@@ -7,6 +7,9 @@
 #include <opencv2/calib3d/calib3d.hpp>
 
 struct ImageDescriptor {
+	int image;
+	int width;
+	int height;
 	std::vector<cv::KeyPoint> keypoints;
 	cv::Mat featureDescriptor;
 };
@@ -15,12 +18,14 @@ struct ImageMatchInfos {
 	float avgDistance;
 	float minDistance;
 	std::vector<std::pair<int, int>> matches;
+	cv::Mat homography;
+	float confidence;
 };
 
 typedef std::pair<std::pair<int, int>, ImageMatchInfos> MatchMatrixElement;
 
 bool compareMatchMatrixElements(const MatchMatrixElement &first, const MatchMatrixElement &second);
 ImageMatchInfos matchImages(const ImageDescriptor &sceneDescriptor, const ImageDescriptor &objectDescriptor);
-cv::Mat computeHomography(const ImageDescriptor &sceneDescriptor, const ImageDescriptor &objectDescriptor, const ImageMatchInfos &match);
+cv::Mat computeHomography(const ImageDescriptor &sceneDescriptor, const ImageDescriptor &objectDescriptor, ImageMatchInfos &match);
 
 #endif

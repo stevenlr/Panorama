@@ -20,6 +20,7 @@ public:
 	void setParent(int image, int parent);
 	void setTransform(int image, const cv::Mat &transform);
 	cv::Mat composePanorama();
+	const cv::Mat &getTransform(int image) const;
 	cv::Mat getFullTransform(int image) const;
 	bool checkCycle(int image) const;
 

@@ -67,7 +67,7 @@ ImageMatchInfos matchImages(const ImageDescriptor &sceneDescriptor, const ImageD
 	return matchInfos;
 }
 
-Mat computeHomography(const ImageDescriptor &sceneDescriptor, const ImageDescriptor &objectDescriptor, const ImageMatchInfos &match)
+Mat computeHomography(const ImageDescriptor &sceneDescriptor, const ImageDescriptor &objectDescriptor, ImageMatchInfos &match)
 {
 	vector<Point2f> points[2];
 	vector<pair<int, int>>::const_iterator it = match.matches.begin();
@@ -75,9 +75,51 @@ Mat computeHomography(const ImageDescriptor &sceneDescriptor, const ImageDescrip
 	while (it != match.matches.end()) {
 		const pair<int, int> &m = *it++;
 
-		points[0].push_back(sceneDescriptor.keypoints[m.first].pt);
-		points[1].push_back(objectDescriptor.keypoints[m.second].pt);
+		Point2f scenePoint = sceneDescriptor.keypoints[m.first].pt;
+		Point2f objectPoint = objectDescriptor.keypoints[m.second].pt;
+
+		scenePoint.x -= sceneDescriptor.width / 2;
+		scenePoint.y -= sceneDescriptor.height / 2;
+
+		objectPoint.x -= objectDescriptor.width / 2;
+		objectPoint.y -= objectDescriptor.height / 2;
+
+		points[0].push_back(scenePoint);
+		points[1].push_back(objectPoint);
 	}
 
-	return findHomography(points[1], points[0], CV_RANSAC);
+	vector<uchar> inliersMask;
+	int numInliers = 0;
+	Mat homography = findHomography(points[1], points[0], CV_RANSAC, 3.0, inliersMask);
+	vector<uchar>::const_iterator inliersIt = inliersMask.cbegin();
+
+	while (inliersIt != inliersMask.cend()) {
+		if (*inliersIt++) {
+			numInliers++;
+		}
+	}
+
+	float confidence = numInliers / (8.0 + 0.3 * match.matches.size());
+	vector<Point2f>::iterator pointsIt[2];
+
+	inliersIt = inliersMask.cbegin();
+	pointsIt[0] = points[0].begin();
+	pointsIt[1] = points[1].begin();
+
+	while (inliersIt != inliersMask.cend()) {
+		if (*inliersIt++) {
+			pointsIt[0]++;
+			pointsIt[1]++;
+		} else {
+			pointsIt[0] = points[0].erase(pointsIt[0]);
+			pointsIt[1] = points[1].erase(pointsIt[1]);
+		}
+	}
+
+	homography = findHomography(points[1], points[0], CV_RANSAC, 3.0);
+
+	match.homography = homography;
+	match.confidence = confidence;
+
+	return homography;
 }

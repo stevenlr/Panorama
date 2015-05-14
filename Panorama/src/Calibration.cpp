@@ -70,10 +70,10 @@ void findAnglesFromPose(const Mat &pose, double &rx, double &ry, double &rz)
 		double x1 = atan2(pose.at<double>(2, 1) / cos(y1), pose.at<double>(2, 2) / cos(y1));
 		double x2 = atan2(pose.at<double>(2, 1) / cos(y2), pose.at<double>(2, 2) / cos(y2));
 
-		double z1 = atan2(pose.at<double>(1, 0) / cos(y1), pose.at<double>(1, 1) / cos(y1));
-		double z2 = atan2(pose.at<double>(1, 0) / cos(y2), pose.at<double>(1, 1) / cos(y2));
+		double z1 = atan2(pose.at<double>(1, 0) / cos(y1), pose.at<double>(0, 0) / cos(y1));
+		double z2 = atan2(pose.at<double>(1, 0) / cos(y2), pose.at<double>(0, 0) / cos(y2));
 
-		if (abs(x1) < abs(x2)) {
+		if (abs(y1) < abs(y2)) {
 			rx = x1;
 			ry = y1;
 			rz = z1;
