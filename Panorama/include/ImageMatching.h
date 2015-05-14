@@ -20,11 +20,14 @@ struct ImageMatchInfos {
 	std::vector<std::pair<int, int>> matches;
 	cv::Mat homography;
 	float confidence;
+
+	ImageMatchInfos() = default;
+	ImageMatchInfos(const ImageMatchInfos &infos);
 };
 
-typedef std::pair<std::pair<int, int>, ImageMatchInfos> MatchMatrixElement;
+typedef std::pair<std::pair<int, int>, ImageMatchInfos> MatchGraphEdge;
 
-bool compareMatchMatrixElements(const MatchMatrixElement &first, const MatchMatrixElement &second);
+bool compareMatchGraphEdge(const MatchGraphEdge &first, const MatchGraphEdge &second);
 ImageMatchInfos matchImages(const ImageDescriptor &sceneDescriptor, const ImageDescriptor &objectDescriptor);
 cv::Mat computeHomography(const ImageDescriptor &sceneDescriptor, const ImageDescriptor &objectDescriptor, ImageMatchInfos &match);
 

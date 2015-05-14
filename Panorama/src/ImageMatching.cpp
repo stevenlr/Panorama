@@ -2,10 +2,23 @@
 
 using namespace std;
 using namespace cv;
+#include <iostream>
 
-bool compareMatchMatrixElements(const MatchMatrixElement &first, const MatchMatrixElement &second)
+ImageMatchInfos::ImageMatchInfos(const ImageMatchInfos &infos)
 {
-	return first.second.avgDistance < second.second.avgDistance;
+	avgDistance = infos.avgDistance;
+	minDistance = infos.minDistance;
+	confidence = infos.confidence;
+
+	infos.homography.copyTo(homography);
+
+	matches.resize(infos.matches.size());
+	copy(infos.matches.begin(), infos.matches.end(), matches.begin());
+}
+
+bool compareMatchGraphEdge(const MatchGraphEdge &first, const MatchGraphEdge &second)
+{
+	return first.second.confidence > second.second.confidence;
 }
 
 ImageMatchInfos matchImages(const ImageDescriptor &sceneDescriptor, const ImageDescriptor &objectDescriptor)

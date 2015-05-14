@@ -64,21 +64,30 @@ int main(int argc, char *argv[])
 		descriptorExtractor->compute(scene.getImageBW(i), descriptors[i].keypoints, descriptors[i].featureDescriptor);
 	}
 
-	list<MatchMatrixElement> matchMatrix;
+	list<MatchGraphEdge> matchGraphEdges;
+	list<MatchGraphEdge> matchSpanningTree;
 	vector<double> focalLengths;
 
 	for (int i = 0; i < NB_IMAGES; ++i) {
-		for (int j = 0; j < NB_IMAGES; ++j) {
+		for (int j = i + 1; j < NB_IMAGES; ++j) {
 			if (i == j) {
 				continue;
 			}
 
-			ImageMatchInfos matchInfos = matchImages(descriptors[j], descriptors[i]);
+			ImageMatchInfos matchInfos(matchImages(descriptors[j], descriptors[i]));
 
 			if (matchInfos.matches.size() >= 4) {
 				computeHomography(descriptors[j], descriptors[i], matchInfos);
-				matchMatrix.push_back(make_pair(make_pair(i, j), matchInfos));
-				findFocalLength(matchInfos.homography, focalLengths);
+
+				if (matchInfos.confidence > 1) {
+					ImageMatchInfos matchInfos2(matchInfos);
+
+					findFocalLength(matchInfos.homography, focalLengths);
+					matchInfos2.homography = matchInfos2.homography.inv();
+
+					matchGraphEdges.push_back(make_pair(make_pair(i, j), matchInfos));
+					matchGraphEdges.push_back(make_pair(make_pair(j, i), matchInfos2));
+				}
 			}
 		}
 	}
@@ -89,41 +98,45 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 
-	double focalLength = getMedianFocalLength(focalLengths);
-	int imageMatched = 0;
+	int connexComponents[NB_IMAGES];
+	bool fullyConnex = false;
 
-	matchMatrix.sort(compareMatchMatrixElements);
+	for (int i = 0; i < NB_IMAGES; ++i) {
+		connexComponents[i] = i;
+	}
 
-	while (imageMatched < NB_IMAGES - 1) {
-		const MatchMatrixElement &elt = matchMatrix.front();
+	matchGraphEdges.sort(compareMatchGraphEdge);
+
+	while (!matchGraphEdges.empty() && !fullyConnex) {
+		MatchGraphEdge elt(matchGraphEdges.front());
 		int objectImage = elt.first.first;
 		int sceneImage = elt.first.second;
 
-		scene.setParent(objectImage, sceneImage);
+		matchGraphEdges.pop_front();
 
-		if (scene.checkCycle(objectImage)) {
-			scene.setParent(objectImage, -1);
-			matchMatrix.erase(matchMatrix.begin());
+		if (connexComponents[objectImage] == connexComponents[sceneImage]) {
 			continue;
 		}
-		
-		scene.setTransform(objectImage, elt.second.homography);
-		
-		list<MatchMatrixElement>::iterator it = matchMatrix.begin();
 
-		while (it != matchMatrix.end()) {
-			if (it->first.first == objectImage) {
-				it = matchMatrix.erase(it);
-			} else {
-				++it;
+		scene.setParent(objectImage, sceneImage);
+		scene.setTransform(objectImage, elt.second.homography);
+		matchSpanningTree.push_back(MatchGraphEdge(elt));
+		fullyConnex = true;
+
+		for (int i = 0; i < NB_IMAGES; ++i) {
+			if (connexComponents[i] == connexComponents[objectImage]) {
+				connexComponents[i] = connexComponents[sceneImage];
+			}
+
+			if (connexComponents[i] != connexComponents[0]) {
+				fullyConnex = false;
 			}
 		}
-
-		imageMatched++;
 	}
 
 	int projSizeX = 1024;
 	int projSizeY = 512;
+	double focalLength = getMedianFocalLength(focalLengths);
 
 	for (int i = 0; i < NB_IMAGES; ++i) {
 		Mat img = scene.getImage(i);
@@ -143,12 +156,14 @@ int main(int argc, char *argv[])
 		intrinsic.at<double>(0, 2) = -img.size().width / 2;
 		intrinsic.at<double>(1, 2) = -img.size().height / 2;
 
-		homography2 = intrinsic.inv() * homography.inv() * intrinsic;
+		homography2 = intrinsic.inv() * homography * intrinsic;
 
 		cameraPoseFromHomography(homography2, pose);
 		findAnglesFromPose(pose, rx, ry, rz);
 
-		double roll = rx;
+		cout << rx << " " << ry << " " << rz << endl;
+
+		double roll = rz;
 
 		for (int x = 0; x < projSizeX; ++x) {
 			double angleX = ((double) x / projSizeX - 0.5) * PI * 2 + ry;
@@ -158,7 +173,7 @@ int main(int argc, char *argv[])
 			}
 
 			for (int y = 0; y < projSizeY; ++y) {
-				double angleY = (((double) y / projSizeY - 0.5) * PI - rz) * 0.99;
+				double angleY = (((double) y / projSizeY - 0.5) * PI - rx) * 0.99;
 
 				if (angleY < -fovy || angleY > fovy) {
 					continue;
