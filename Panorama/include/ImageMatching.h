@@ -14,7 +14,7 @@ struct ImageDescriptor {
 struct ImageMatchInfos {
 	float avgDistance;
 	float minDistance;
-	std::vector<cv::DMatch> matches;
+	std::vector<std::pair<int, int>> matches;
 };
 
 typedef std::pair<std::pair<int, int>, ImageMatchInfos> MatchMatrixElement;

@@ -10,21 +10,55 @@ bool compareMatchMatrixElements(const MatchMatrixElement &first, const MatchMatr
 
 ImageMatchInfos matchImages(const ImageDescriptor &sceneDescriptor, const ImageDescriptor &objectDescriptor)
 {
+	const float confidence = 0.4;
 	ImageMatchInfos matchInfos;
 	Ptr<DescriptorMatcher> descriptorMatcher = DescriptorMatcher::create("FlannBased");
-
-	descriptorMatcher->match(objectDescriptor.featureDescriptor, sceneDescriptor.featureDescriptor, matchInfos.matches);
+	vector<vector<DMatch>> matches;
 
 	matchInfos.minDistance = numeric_limits<float>::max();
 	matchInfos.avgDistance = 0;
 
-	for (int i = 0; i < matchInfos.matches.size(); ++i) {
-		float dist = matchInfos.matches[i].distance;
+	descriptorMatcher->knnMatch(objectDescriptor.featureDescriptor, sceneDescriptor.featureDescriptor, matches, 2);
 
-		matchInfos.avgDistance += dist;
+	for (int i = 0; i < matches.size(); ++i) {
+		if (matches[i].size() < 2) {
+			continue;
+		}
 
-		if (dist < matchInfos.minDistance) {
-			matchInfos.minDistance = dist;
+		const DMatch &m0 = matches[i][0];
+		const DMatch &m1 = matches[i][1];
+
+		if (m0.distance < (1 - confidence) * m1.distance) {
+			matchInfos.matches.push_back(make_pair(m0.trainIdx, m0.queryIdx));
+			matchInfos.avgDistance += m0.distance;
+
+			if (m0.distance < matchInfos.minDistance) {
+				matchInfos.minDistance = m0.distance;
+			}
+		}
+	}
+
+	descriptorMatcher->knnMatch(sceneDescriptor.featureDescriptor, objectDescriptor.featureDescriptor, matches, 2);
+
+	for (int i = 0; i < matches.size(); ++i) {
+		if (matches[i].size() < 2) {
+			continue;
+		}
+
+		const DMatch &m0 = matches[i][0];
+		const DMatch &m1 = matches[i][1];
+
+		if (m0.distance < (1 - confidence) * m1.distance) {
+			if (find(matchInfos.matches.begin(), matchInfos.matches.end(), make_pair(m0.queryIdx, m0.trainIdx)) != matchInfos.matches.end()) {
+				continue;
+			}
+
+			matchInfos.matches.push_back(make_pair(m0.queryIdx, m0.trainIdx));
+			matchInfos.avgDistance += m0.distance;
+
+			if (m0.distance < matchInfos.minDistance) {
+				matchInfos.minDistance = m0.distance;
+			}
 		}
 	}
 
@@ -35,19 +69,14 @@ ImageMatchInfos matchImages(const ImageDescriptor &sceneDescriptor, const ImageD
 
 Mat computeHomography(const ImageDescriptor &sceneDescriptor, const ImageDescriptor &objectDescriptor, const ImageMatchInfos &match)
 {
-	vector<DMatch> goodMatches;
-
-	for (int i = 0; i < match.matches.size(); ++i) {
-		if (match.matches[i].distance < 3 * match.minDistance) {
-			goodMatches.push_back(match.matches[i]);
-		}
-	}
-
 	vector<Point2f> points[2];
+	vector<pair<int, int>>::const_iterator it = match.matches.begin();
 
-	for (int i = 0; i < goodMatches.size(); ++i) {
-		points[0].push_back(sceneDescriptor.keypoints[goodMatches[i].trainIdx].pt);
-		points[1].push_back(objectDescriptor.keypoints[goodMatches[i].queryIdx].pt);
+	while (it != match.matches.end()) {
+		const pair<int, int> &m = *it++;
+
+		points[0].push_back(sceneDescriptor.keypoints[m.first].pt);
+		points[1].push_back(objectDescriptor.keypoints[m.second].pt);
 	}
 
 	return findHomography(points[1], points[0], CV_RANSAC);
