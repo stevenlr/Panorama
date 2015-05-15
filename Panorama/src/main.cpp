@@ -18,6 +18,8 @@
 #include "ImageMatching.h"
 #include "Calibration.h"
 
+#define DATASET 4
+
 using namespace std;
 using namespace cv;
 
@@ -28,23 +30,31 @@ int main(int argc, char *argv[])
 
 	vector<string> sourceImagesNames;
 
-	if (true) {
-		sourceImagesNames.push_back("balcony0");
-		sourceImagesNames.push_back("balcony1");
-		sourceImagesNames.push_back("balcony2");
-	} else if (false) {
-		sourceImagesNames.push_back("office1");
-		sourceImagesNames.push_back("office2");
-		sourceImagesNames.push_back("office4");
-		sourceImagesNames.push_back("office3");
-	} else {
-		sourceImagesNames.push_back("building1");
-		sourceImagesNames.push_back("building2");
-		sourceImagesNames.push_back("building3");
-		sourceImagesNames.push_back("building4");
-		sourceImagesNames.push_back("building5");
-		sourceImagesNames.push_back("building6");
-	}
+#if DATASET == 1
+	sourceImagesNames.push_back("balcony0");
+	sourceImagesNames.push_back("balcony1");
+	sourceImagesNames.push_back("balcony2");
+#elif DATASET == 2
+	sourceImagesNames.push_back("office1");
+	sourceImagesNames.push_back("office2");
+	sourceImagesNames.push_back("office4");
+	sourceImagesNames.push_back("office3");
+#elif DATASET == 3
+	sourceImagesNames.push_back("building1");
+	sourceImagesNames.push_back("building2");
+	sourceImagesNames.push_back("building3");
+	sourceImagesNames.push_back("building4");
+	sourceImagesNames.push_back("building5");
+	sourceImagesNames.push_back("building6");
+#elif DATASET == 4
+	sourceImagesNames.push_back("mountain1");
+	sourceImagesNames.push_back("mountain2");
+#elif DATASET == 5
+	sourceImagesNames.push_back("bus1");
+	sourceImagesNames.push_back("bus2");
+#else
+	return 1;
+#endif
 
 	int nbImages = sourceImagesNames.size();
 	Scene scene(nbImages);
@@ -233,6 +243,7 @@ int main(int argc, char *argv[])
 	int projSizeX = 1024;
 	int projSizeY = 512;
 	double focalLength = getMedianFocalLength(focalLengths);
+	Mat finalImage(Size(projSizeX, projSizeY), scene.getImage(0).type());
 
 	for (int i = 0; i < nbImages; ++i) {
 		Mat img = scene.getImage(i);
@@ -255,21 +266,21 @@ int main(int argc, char *argv[])
 		homography2 = intrinsic.inv() * homography * intrinsic;
 
 		cameraPoseFromHomography(homography2, pose);
-		findAnglesFromPose(pose, rx, ry, rz);
+		findAnglesFromPose(homography2, rx, ry, rz);
 
 		cout << rx << " " << ry << " " << rz << endl;
 
-		double roll = rz;
+		double roll = rx;
 
 		for (int x = 0; x < projSizeX; ++x) {
-			double angleX = ((double) x / projSizeX - 0.5) * PI * 2 - ry;
+			double angleX = ((double) x / projSizeX - 0.5) * PI * 2 + ry;
 
 			if (angleX < -fovx || angleX > fovx) {
 				continue;
 			}
 
 			for (int y = 0; y < projSizeY; ++y) {
-				double angleY = (((double) y / projSizeY - 0.5) * PI - rx) * 0.99;
+				double angleY = (((double) y / projSizeY - 0.5) * PI - rz) * 0.99;
 
 				if (angleY < -fovy || angleY > fovy) {
 					continue;
@@ -283,18 +294,23 @@ int main(int argc, char *argv[])
 			}
 		}
 
+		Mat maskNormal = Mat::ones(img.size(), CV_8U);
+		Mat maskSpherical(Size(projSizeX, projSizeY), CV_8U, Scalar(0));
 		Mat img2(Size(projSizeX, projSizeY), CV_8UC3, Scalar(0, 0, 0));
 
+		remap(maskNormal, maskSpherical, map, Mat(), INTER_LINEAR, BORDER_TRANSPARENT);
 		remap(img, img2, map, Mat(), INTER_LINEAR, BORDER_TRANSPARENT);
-		//namedWindow(sourceImagesNames[i], WINDOW_AUTOSIZE);
-		//imshow(sourceImagesNames[i], img2);
+		img2.copyTo(finalImage, maskSpherical);
 	}
 
-	Mat panorama = scene.composePanorama();
+	namedWindow("output spherical", WINDOW_AUTOSIZE);
+	imshow("output spherical", finalImage);
 
-	namedWindow("output", WINDOW_AUTOSIZE);
-	imshow("output", panorama);
-	imwrite("output.jpg", panorama);
+	//Mat panorama = scene.composePanorama();
+
+	//namedWindow("output", WINDOW_AUTOSIZE);
+	//imshow("output", panorama);
+	//imwrite("output.jpg", panorama);
 
 	waitKey(0);
 

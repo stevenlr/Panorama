@@ -103,6 +103,12 @@ Mat Scene::composePanorama()
 	for (int i = 0; i < _nbImages; ++i) {
 		Mat fullTransform = getFullTransform(i);
 		const Size &size = getImage(i).size();
+		Mat translation = Mat::eye(Size(3, 3), CV_64F);
+
+		translation.at<double>(0, 2) = -size.width / 2;
+		translation.at<double>(1, 2) = -size.height / 2;
+
+		fullTransform = fullTransform * translation;
 
 		srcPoints[1] = Point2f(static_cast<float>(size.width), 0);
 		srcPoints[2] = Point2f(0, static_cast<float>(size.height));
