@@ -18,8 +18,6 @@
 #include "ImageMatching.h"
 #include "Calibration.h"
 
-#define NB_IMAGES 6
-
 using namespace std;
 using namespace cv;
 
@@ -28,31 +26,30 @@ int main(int argc, char *argv[])
 	initModule_features2d();
 	initModule_nonfree();
 
-	assert(NB_IMAGES > 1);
+	vector<string> sourceImagesNames;
 
-	Scene scene(NB_IMAGES);
-
-	string sourceImagesNames[NB_IMAGES];
-
-	if (false) {
-		sourceImagesNames[0] = "balcony0";
-		sourceImagesNames[1] = "balcony1";
-		sourceImagesNames[2] = "balcony2";
+	if (true) {
+		sourceImagesNames.push_back("balcony0");
+		sourceImagesNames.push_back("balcony1");
+		sourceImagesNames.push_back("balcony2");
 	} else if (false) {
-		sourceImagesNames[0] = "office1";
-		sourceImagesNames[1] = "office2";
-		sourceImagesNames[2] = "office4";
-		sourceImagesNames[3] = "office3";
+		sourceImagesNames.push_back("office1");
+		sourceImagesNames.push_back("office2");
+		sourceImagesNames.push_back("office4");
+		sourceImagesNames.push_back("office3");
 	} else {
-		sourceImagesNames[0] = "building1";
-		sourceImagesNames[1] = "building2";
-		sourceImagesNames[2] = "building3";
-		sourceImagesNames[3] = "building4";
-		sourceImagesNames[4] = "building5";
-		sourceImagesNames[5] = "building6";
+		sourceImagesNames.push_back("building1");
+		sourceImagesNames.push_back("building2");
+		sourceImagesNames.push_back("building3");
+		sourceImagesNames.push_back("building4");
+		sourceImagesNames.push_back("building5");
+		sourceImagesNames.push_back("building6");
 	}
 
-	for (int i = 0; i < NB_IMAGES; ++i) {
+	int nbImages = sourceImagesNames.size();
+	Scene scene(nbImages);
+
+	for (int i = 0; i < nbImages; ++i) {
 		Mat img = imread("../source_images/" + sourceImagesNames[i] + ".jpg");
 
 		if (!img.data) {
@@ -66,9 +63,9 @@ int main(int argc, char *argv[])
 	Ptr<FeatureDetector> featureDetector = FeatureDetector::create("SIFT");
 	Ptr<DescriptorExtractor> descriptorExtractor = DescriptorExtractor::create("SIFT");
 
-	ImageDescriptor descriptors[NB_IMAGES];
+	vector<ImageDescriptor> descriptors(nbImages);
 
-	for (int i = 0; i < NB_IMAGES; ++i) {
+	for (int i = 0; i < nbImages; ++i) {
 		descriptors[i].image = i;
 		descriptors[i].width = scene.getImage(i).size().width;
 		descriptors[i].height = scene.getImage(i).size().height;
@@ -80,8 +77,8 @@ int main(int argc, char *argv[])
 	map<pair<int, int>, ImageMatchInfos> matchInfosMap;
 	vector<double> focalLengths;
 
-	for (int i = 0; i < NB_IMAGES; ++i) {
-		for (int j = i + 1; j < NB_IMAGES; ++j) {
+	for (int i = 0; i < nbImages; ++i) {
+		for (int j = i + 1; j < nbImages; ++j) {
 			if (i == j) {
 				continue;
 			}
@@ -115,19 +112,19 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 	
-	int connexComponents[NB_IMAGES];
+	vector<int> connexComponents(nbImages);
 	bool fullyConnex = false;
 
-	for (int i = 0; i < NB_IMAGES; ++i) {
+	for (int i = 0; i < nbImages; ++i) {
 		connexComponents[i] = i;
 	}
 
-	vector<vector<bool>> matchSpanningTreeEdges(NB_IMAGES);
+	vector<vector<bool>> matchSpanningTreeEdges(nbImages);
 
-	for (int i = 0; i < NB_IMAGES; ++i) {
-		matchSpanningTreeEdges[i].resize(NB_IMAGES);
+	for (int i = 0; i < nbImages; ++i) {
+		matchSpanningTreeEdges[i].resize(nbImages);
 
-		for (int j = 0; j < NB_IMAGES; ++j) {
+		for (int j = 0; j < nbImages; ++j) {
 			matchSpanningTreeEdges[i][j] = false;
 		}
 	}
@@ -149,7 +146,7 @@ int main(int argc, char *argv[])
 		matchSpanningTreeEdges[objectImage][sceneImage] = true;
 		matchSpanningTreeEdges[sceneImage][objectImage] = true;
 
-		for (int i = 0; i < NB_IMAGES; ++i) {
+		for (int i = 0; i < nbImages; ++i) {
 			if (connexComponents[i] == connexComponents[objectImage]) {
 				connexComponents[i] = connexComponents[sceneImage];
 			}
@@ -160,18 +157,18 @@ int main(int argc, char *argv[])
 		}
 	}
 
-	int nodeDepth[NB_IMAGES];
+	vector<int> nodeDepth(nbImages);
 
-	for (int i = 0; i < NB_IMAGES; ++i) {
+	for (int i = 0; i < nbImages; ++i) {
 		nodeDepth[i] = numeric_limits<int>::max();
 	}
 
-	for (int i = 0; i < NB_IMAGES; ++i) {
+	for (int i = 0; i < nbImages; ++i) {
 		set<int> visited;
 		queue<pair<int, int>> toVisit;
 		int nbConnections = 0;
 
-		for (int j = 0; j < NB_IMAGES; ++j) {
+		for (int j = 0; j < nbImages; ++j) {
 			if (matchSpanningTreeEdges[i][j]) {
 				nbConnections++;
 			}
@@ -190,7 +187,7 @@ int main(int argc, char *argv[])
 			nodeDepth[current] = min(nodeDepth[current], depth);
 			visited.insert(current);
 
-			for (int j = 0; j < NB_IMAGES; ++j) {
+			for (int j = 0; j < nbImages; ++j) {
 				if (matchSpanningTreeEdges[current][j] && visited.find(j) == visited.end()) {
 					toVisit.push(make_pair(j, depth + 1));
 				}
@@ -200,7 +197,7 @@ int main(int argc, char *argv[])
 		}
 	}
 
-	int treeCenter = max_element(nodeDepth, nodeDepth + NB_IMAGES) - nodeDepth;
+	int treeCenter = max_element(nodeDepth.begin(), nodeDepth.end()) - nodeDepth.begin();
 
 	list<MatchGraphEdge> matchSpanningTree;
 
@@ -223,7 +220,7 @@ int main(int argc, char *argv[])
 				scene.setTransform(current, Mat::eye(Size(3, 3), CV_64F));
 			}
 
-			for (int j = 0; j < NB_IMAGES; ++j) {
+			for (int j = 0; j < nbImages; ++j) {
 				if (matchSpanningTreeEdges[current][j] && visited.find(j) == visited.end()) {
 					toVisit.push(make_pair(j, current));
 				}
@@ -237,7 +234,7 @@ int main(int argc, char *argv[])
 	int projSizeY = 512;
 	double focalLength = getMedianFocalLength(focalLengths);
 
-	for (int i = 0; i < NB_IMAGES; ++i) {
+	for (int i = 0; i < nbImages; ++i) {
 		Mat img = scene.getImage(i);
 		Mat map(Size(projSizeX, projSizeY), CV_32FC2, Scalar(-1, -1));
 		const Mat &homography = scene.getFullTransform(i);
