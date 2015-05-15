@@ -10,15 +10,28 @@ ImageMatchInfos::ImageMatchInfos(const ImageMatchInfos &infos)
 	minDistance = infos.minDistance;
 	confidence = infos.confidence;
 
-	infos.homography.copyTo(homography);
+	homography = infos.homography.clone();
 
 	matches.resize(infos.matches.size());
 	copy(infos.matches.begin(), infos.matches.end(), matches.begin());
 }
 
-bool compareMatchGraphEdge(const MatchGraphEdge &first, const MatchGraphEdge &second)
+ImageMatchInfos &ImageMatchInfos::operator=(const ImageMatchInfos &infos)
 {
-	return first.second.confidence > second.second.confidence;
+	if (this == &infos) {
+		return *this;
+	}
+
+	avgDistance = infos.avgDistance;
+	minDistance = infos.minDistance;
+	confidence = infos.confidence;
+
+	homography = infos.homography.clone();
+
+	matches.resize(infos.matches.size());
+	copy(infos.matches.begin(), infos.matches.end(), matches.begin());
+
+	return *this;
 }
 
 ImageMatchInfos matchImages(const ImageDescriptor &sceneDescriptor, const ImageDescriptor &objectDescriptor)
@@ -91,11 +104,11 @@ Mat computeHomography(const ImageDescriptor &sceneDescriptor, const ImageDescrip
 		Point2f scenePoint = sceneDescriptor.keypoints[m.first].pt;
 		Point2f objectPoint = objectDescriptor.keypoints[m.second].pt;
 
-		scenePoint.x -= sceneDescriptor.width / 2;
+		/*scenePoint.x -= sceneDescriptor.width / 2;
 		scenePoint.y -= sceneDescriptor.height / 2;
 
 		objectPoint.x -= objectDescriptor.width / 2;
-		objectPoint.y -= objectDescriptor.height / 2;
+		objectPoint.y -= objectDescriptor.height / 2;*/
 
 		points[0].push_back(scenePoint);
 		points[1].push_back(objectPoint);
@@ -129,7 +142,7 @@ Mat computeHomography(const ImageDescriptor &sceneDescriptor, const ImageDescrip
 		}
 	}
 
-	homography = findHomography(points[1], points[0], CV_RANSAC, 3.0);
+	//homography = findHomography(points[1], points[0], CV_RANSAC, 3.0);
 
 	match.homography = homography;
 	match.confidence = confidence;

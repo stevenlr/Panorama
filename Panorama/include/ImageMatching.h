@@ -23,11 +23,16 @@ struct ImageMatchInfos {
 
 	ImageMatchInfos() = default;
 	ImageMatchInfos(const ImageMatchInfos &infos);
+	ImageMatchInfos &operator=(const ImageMatchInfos &infos);
 };
 
-typedef std::pair<std::pair<int, int>, ImageMatchInfos> MatchGraphEdge;
+typedef std::pair<std::pair<int, int>, float> MatchGraphEdge;
 
-bool compareMatchGraphEdge(const MatchGraphEdge &first, const MatchGraphEdge &second);
+inline bool compareMatchGraphEdge(const MatchGraphEdge &first, const MatchGraphEdge &second)
+{
+	return first.second > second.second;
+}
+
 ImageMatchInfos matchImages(const ImageDescriptor &sceneDescriptor, const ImageDescriptor &objectDescriptor);
 cv::Mat computeHomography(const ImageDescriptor &sceneDescriptor, const ImageDescriptor &objectDescriptor, ImageMatchInfos &match);
 

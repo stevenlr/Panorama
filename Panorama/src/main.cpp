@@ -3,6 +3,10 @@
 #include <string>
 #include <vector>
 #include <list>
+#include <bitset>
+#include <set>
+#include <queue>
+#include <algorithm>
 
 #include <opencv2/core/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
@@ -14,7 +18,7 @@
 #include "ImageMatching.h"
 #include "Calibration.h"
 
-#define NB_IMAGES 3
+#define NB_IMAGES 6
 
 using namespace std;
 using namespace cv;
@@ -34,11 +38,19 @@ int main(int argc, char *argv[])
 		sourceImagesNames[0] = "balcony0";
 		sourceImagesNames[1] = "balcony1";
 		sourceImagesNames[2] = "balcony2";
-	} else {
+	} else if (false) {
 		sourceImagesNames[0] = "office1";
 		sourceImagesNames[1] = "office2";
-		sourceImagesNames[2] = "office3";
-	}	
+		sourceImagesNames[2] = "office4";
+		sourceImagesNames[3] = "office3";
+	} else {
+		sourceImagesNames[0] = "building1";
+		sourceImagesNames[1] = "building2";
+		sourceImagesNames[2] = "building3";
+		sourceImagesNames[3] = "building4";
+		sourceImagesNames[4] = "building5";
+		sourceImagesNames[5] = "building6";
+	}
 
 	for (int i = 0; i < NB_IMAGES; ++i) {
 		Mat img = imread("../source_images/" + sourceImagesNames[i] + ".jpg");
@@ -65,7 +77,7 @@ int main(int argc, char *argv[])
 	}
 
 	list<MatchGraphEdge> matchGraphEdges;
-	list<MatchGraphEdge> matchSpanningTree;
+	map<pair<int, int>, ImageMatchInfos> matchInfosMap;
 	vector<double> focalLengths;
 
 	for (int i = 0; i < NB_IMAGES; ++i) {
@@ -74,19 +86,24 @@ int main(int argc, char *argv[])
 				continue;
 			}
 
-			ImageMatchInfos matchInfos(matchImages(descriptors[j], descriptors[i]));
+			ImageMatchInfos matchInfos = matchImages(descriptors[j], descriptors[i]);
 
 			if (matchInfos.matches.size() >= 4) {
 				computeHomography(descriptors[j], descriptors[i], matchInfos);
 
 				if (matchInfos.confidence > 1) {
-					ImageMatchInfos matchInfos2(matchInfos);
+					ImageMatchInfos matchInfos2 = matchInfos;
 
-					findFocalLength(matchInfos.homography, focalLengths);
 					matchInfos2.homography = matchInfos2.homography.inv();
 
-					matchGraphEdges.push_back(make_pair(make_pair(i, j), matchInfos));
-					matchGraphEdges.push_back(make_pair(make_pair(j, i), matchInfos2));
+					findFocalLength(matchInfos.homography, focalLengths);
+					findFocalLength(matchInfos2.homography, focalLengths);
+
+					matchGraphEdges.push_back(make_pair(make_pair(i, j), matchInfos.confidence));
+					matchGraphEdges.push_back(make_pair(make_pair(j, i), matchInfos2.confidence));
+
+					matchInfosMap[make_pair(i, j)] = matchInfos;
+					matchInfosMap[make_pair(j, i)] = matchInfos2;
 				}
 			}
 		}
@@ -97,12 +114,22 @@ int main(int argc, char *argv[])
 		cin.get();
 		return 1;
 	}
-
+	
 	int connexComponents[NB_IMAGES];
 	bool fullyConnex = false;
 
 	for (int i = 0; i < NB_IMAGES; ++i) {
 		connexComponents[i] = i;
+	}
+
+	vector<vector<bool>> matchSpanningTreeEdges(NB_IMAGES);
+
+	for (int i = 0; i < NB_IMAGES; ++i) {
+		matchSpanningTreeEdges[i].resize(NB_IMAGES);
+
+		for (int j = 0; j < NB_IMAGES; ++j) {
+			matchSpanningTreeEdges[i][j] = false;
+		}
 	}
 
 	matchGraphEdges.sort(compareMatchGraphEdge);
@@ -118,10 +145,9 @@ int main(int argc, char *argv[])
 			continue;
 		}
 
-		scene.setParent(objectImage, sceneImage);
-		scene.setTransform(objectImage, elt.second.homography);
-		matchSpanningTree.push_back(MatchGraphEdge(elt));
 		fullyConnex = true;
+		matchSpanningTreeEdges[objectImage][sceneImage] = true;
+		matchSpanningTreeEdges[sceneImage][objectImage] = true;
 
 		for (int i = 0; i < NB_IMAGES; ++i) {
 			if (connexComponents[i] == connexComponents[objectImage]) {
@@ -131,6 +157,79 @@ int main(int argc, char *argv[])
 			if (connexComponents[i] != connexComponents[0]) {
 				fullyConnex = false;
 			}
+		}
+	}
+
+	int nodeDepth[NB_IMAGES];
+
+	for (int i = 0; i < NB_IMAGES; ++i) {
+		nodeDepth[i] = numeric_limits<int>::max();
+	}
+
+	for (int i = 0; i < NB_IMAGES; ++i) {
+		set<int> visited;
+		queue<pair<int, int>> toVisit;
+		int nbConnections = 0;
+
+		for (int j = 0; j < NB_IMAGES; ++j) {
+			if (matchSpanningTreeEdges[i][j]) {
+				nbConnections++;
+			}
+		}
+
+		if (nbConnections != 1) {
+			continue;
+		}
+
+		toVisit.push(make_pair(i, 0));
+		
+		while (!toVisit.empty()) {
+			int current = toVisit.front().first;
+			int depth = toVisit.front().second;
+
+			nodeDepth[current] = min(nodeDepth[current], depth);
+			visited.insert(current);
+
+			for (int j = 0; j < NB_IMAGES; ++j) {
+				if (matchSpanningTreeEdges[current][j] && visited.find(j) == visited.end()) {
+					toVisit.push(make_pair(j, depth + 1));
+				}
+			}
+
+			toVisit.pop();
+		}
+	}
+
+	int treeCenter = max_element(nodeDepth, nodeDepth + NB_IMAGES) - nodeDepth;
+
+	list<MatchGraphEdge> matchSpanningTree;
+
+	{
+		set<int> visited;
+		queue<pair<int, int>> toVisit;
+
+		toVisit.push(make_pair(treeCenter, -1));
+		
+		while (!toVisit.empty()) {
+			int current = toVisit.front().first;
+			int parent = toVisit.front().second;
+
+			visited.insert(current);
+			scene.setParent(current, parent);
+			
+			if (parent != -1) {
+				scene.setTransform(current, matchInfosMap[make_pair(current, parent)].homography);
+			} else {
+				scene.setTransform(current, Mat::eye(Size(3, 3), CV_64F));
+			}
+
+			for (int j = 0; j < NB_IMAGES; ++j) {
+				if (matchSpanningTreeEdges[current][j] && visited.find(j) == visited.end()) {
+					toVisit.push(make_pair(j, current));
+				}
+			}
+
+			toVisit.pop();
 		}
 	}
 
@@ -166,7 +265,7 @@ int main(int argc, char *argv[])
 		double roll = rz;
 
 		for (int x = 0; x < projSizeX; ++x) {
-			double angleX = ((double) x / projSizeX - 0.5) * PI * 2 + ry;
+			double angleX = ((double) x / projSizeX - 0.5) * PI * 2 - ry;
 
 			if (angleX < -fovx || angleX > fovx) {
 				continue;
@@ -190,12 +289,14 @@ int main(int argc, char *argv[])
 		Mat img2(Size(projSizeX, projSizeY), CV_8UC3, Scalar(0, 0, 0));
 
 		remap(img, img2, map, Mat(), INTER_LINEAR, BORDER_TRANSPARENT);
-		namedWindow(sourceImagesNames[i], WINDOW_AUTOSIZE);
-		imshow(sourceImagesNames[i], img2);
+		//namedWindow(sourceImagesNames[i], WINDOW_AUTOSIZE);
+		//imshow(sourceImagesNames[i], img2);
 	}
 
 	Mat panorama = scene.composePanorama();
 
+	namedWindow("output", WINDOW_AUTOSIZE);
+	imshow("output", panorama);
 	imwrite("output.jpg", panorama);
 
 	waitKey(0);
