@@ -1,8 +1,12 @@
 #include "Scene.h"
 
 #include <set>
+#include <queue>
+#include <algorithm>
 
 #include <opencv2/imgproc/imgproc.hpp>
+
+#include "ImageMatching.h"
 
 using namespace std;
 using namespace cv;
@@ -16,7 +20,7 @@ Scene::Scene(int nbImages)
 	_imagesBW.resize(_nbImages);
 	
 	for (int i = 0; i < _nbImages; ++i) {
-		_transform.push_back(Mat::eye(3, 3, CV_64F));
+		_transform.push_back(Mat());
 		_parent.push_back(-1);
 	}
 }
@@ -44,6 +48,11 @@ const cv::Mat &Scene::getImageBW(int i) const
 	assert(i >= 0 && i < _nbImages);
 
 	return _imagesBW[i];
+}
+
+int Scene::getNbImages() const
+{
+	return _images.size();
 }
 
 int Scene::getParent(int image) const
@@ -87,7 +96,7 @@ Mat Scene::getFullTransform(int image) const
 		return _transform[image].clone();
 	}
 }
-#include <iostream>
+
 Mat Scene::composePanorama()
 {
 	vector<Point2f> srcPoints(4);
@@ -170,4 +179,137 @@ bool Scene::checkCycle(int image) const
 	}
 
 	return false;
+}
+
+void Scene::findSpanningTree(list<MatchGraphEdge> &matchGraphEdges, vector<vector<bool>> &matchSpanningTreeEdges)
+{
+	int nbImages = getNbImages();
+	vector<int> connexComponents(nbImages);
+	bool fullyConnex = false;
+
+	matchGraphEdges.sort(compareMatchGraphEdge);
+
+	for (int i = 0; i < nbImages; ++i) {
+		connexComponents[i] = i;
+		matchSpanningTreeEdges[i].resize(nbImages);
+
+		for (int j = 0; j < nbImages; ++j) {
+			matchSpanningTreeEdges[i][j] = false;
+		}
+	}
+
+	while (!matchGraphEdges.empty() && !fullyConnex) {
+		MatchGraphEdge elt(matchGraphEdges.front());
+		int objectImage = elt.objectImage;
+		int sceneImage = elt.sceneImage;
+
+		matchGraphEdges.pop_front();
+
+		if (connexComponents[objectImage] == connexComponents[sceneImage]) {
+			continue;
+		}
+
+		fullyConnex = true;
+		matchSpanningTreeEdges[objectImage][sceneImage] = true;
+		matchSpanningTreeEdges[sceneImage][objectImage] = true;
+
+		for (int i = 0; i < nbImages; ++i) {
+			if (connexComponents[i] == connexComponents[objectImage]) {
+				connexComponents[i] = connexComponents[sceneImage];
+			}
+
+			if (connexComponents[i] != connexComponents[0]) {
+				fullyConnex = false;
+			}
+		}
+	}
+}
+
+void Scene::markNodeDepth(vector<int> &nodeDepth, vector<vector<bool>> &matchSpanningTreeEdges)
+{
+	int nbImages = getNbImages();
+
+	for (int i = 0; i < nbImages; ++i) {
+		nodeDepth[i] = numeric_limits<int>::max();
+	}
+
+	for (int i = 0; i < nbImages; ++i) {
+		set<int> visited;
+		queue<pair<int, int>> toVisit;
+		int nbConnections = 0;
+
+		for (int j = 0; j < nbImages; ++j) {
+			if (matchSpanningTreeEdges[i][j]) {
+				nbConnections++;
+			}
+		}
+
+		if (nbConnections != 1) {
+			continue;
+		}
+
+		toVisit.push(make_pair(i, 0));
+		
+		while (!toVisit.empty()) {
+			int current = toVisit.front().first;
+			int depth = toVisit.front().second;
+
+			nodeDepth[current] = min(nodeDepth[current], depth);
+			visited.insert(current);
+
+			for (int j = 0; j < nbImages; ++j) {
+				if (matchSpanningTreeEdges[current][j] && visited.find(j) == visited.end()) {
+					toVisit.push(make_pair(j, depth + 1));
+				}
+			}
+
+			toVisit.pop();
+		}
+	}
+}
+
+void Scene::makeFinalSceneTree(int treeCenter, map<pair<int, int>, ImageMatchInfos> &matchInfosMap,
+							   vector<vector<bool>> &matchSpanningTreeEdges)
+{
+	int nbImages = getNbImages();
+	set<int> visited;
+	queue<pair<int, int>> toVisit;
+
+	toVisit.push(make_pair(treeCenter, -1));
+		
+	while (!toVisit.empty()) {
+		int current = toVisit.front().first;
+		int parent = toVisit.front().second;
+
+		visited.insert(current);
+		setParent(current, parent);
+			
+		if (parent != -1) {
+			setTransform(current, matchInfosMap[make_pair(current, parent)].homography);
+		} else {
+			setTransform(current, Mat::eye(Size(3, 3), CV_64F));
+		}
+
+		for (int j = 0; j < nbImages; ++j) {
+			if (matchSpanningTreeEdges[current][j] && visited.find(j) == visited.end()) {
+				toVisit.push(make_pair(j, current));
+			}
+		}
+
+		toVisit.pop();
+	}
+}
+
+void Scene::makeSceneGraph(list<MatchGraphEdge> &matchGraphEdges, map<pair<int, int>, ImageMatchInfos> &matchInfosMap)
+{
+	int nbImages = getNbImages();
+
+	vector<vector<bool>> matchSpanningTreeEdges(nbImages);
+	findSpanningTree(matchGraphEdges, matchSpanningTreeEdges);
+
+	vector<int> nodeDepth(nbImages);
+	markNodeDepth(nodeDepth, matchSpanningTreeEdges);
+
+	int treeCenter = max_element(nodeDepth.begin(), nodeDepth.end()) - nodeDepth.begin();
+	makeFinalSceneTree(treeCenter, matchInfosMap, matchSpanningTreeEdges);
 }

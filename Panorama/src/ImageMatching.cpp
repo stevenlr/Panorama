@@ -1,8 +1,9 @@
 #include "ImageMatching.h"
 
+#include "Calibration.h"
+
 using namespace std;
 using namespace cv;
-#include <iostream>
 
 ImageMatchInfos::ImageMatchInfos(const ImageMatchInfos &infos)
 {
@@ -148,4 +149,66 @@ Mat computeHomography(const ImageDescriptor &sceneDescriptor, const ImageDescrip
 	match.confidence = confidence;
 
 	return homography;
+}
+
+void extractFeatures(const Scene &scene, vector<ImageDescriptor> &descriptors)
+{
+	Ptr<FeatureDetector> featureDetector = FeatureDetector::create("SIFT");
+	Ptr<DescriptorExtractor> descriptorExtractor = DescriptorExtractor::create("SIFT");
+
+	for (int i = 0; i < scene.getNbImages(); ++i) {
+		descriptors[i].image = i;
+		descriptors[i].width = scene.getImage(i).size().width;
+		descriptors[i].height = scene.getImage(i).size().height;
+		featureDetector->detect(scene.getImageBW(i), descriptors[i].keypoints);
+		descriptorExtractor->compute(scene.getImageBW(i), descriptors[i].keypoints, descriptors[i].featureDescriptor);
+	}
+}
+
+void pairwiseMatch(const Scene &scene,
+				   const vector<ImageDescriptor> &descriptors,
+				   list<MatchGraphEdge> &matchGraphEdges,
+				   map<pair<int, int>, ImageMatchInfos> &matchInfosMap,
+				   vector<double> &focalLengths)
+{
+	int nbImages = scene.getNbImages();
+
+	for (int i = 0; i < nbImages; ++i) {
+		for (int j = i + 1; j < nbImages; ++j) {
+			if (i == j) {
+				continue;
+			}
+
+			ImageMatchInfos matchInfos = matchImages(descriptors[j], descriptors[i]);
+
+			if (matchInfos.matches.size() >= 4) {
+				computeHomography(descriptors[j], descriptors[i], matchInfos);
+
+				if (matchInfos.confidence > 1) {
+					ImageMatchInfos matchInfos2 = matchInfos;
+
+					matchInfos2.homography = matchInfos2.homography.inv();
+
+					findFocalLength(matchInfos.homography, focalLengths);
+					findFocalLength(matchInfos2.homography, focalLengths);
+
+					MatchGraphEdge edge1;
+					MatchGraphEdge edge2;
+
+					edge1.objectImage = i;
+					edge1.sceneImage = j;
+					edge1.confidence = matchInfos.confidence;
+					edge2.objectImage = i;
+					edge2.sceneImage = j;
+					edge2.confidence = matchInfos.confidence;
+
+					matchGraphEdges.push_back(edge1);
+					matchGraphEdges.push_back(edge2);
+
+					matchInfosMap[make_pair(i, j)] = matchInfos;
+					matchInfosMap[make_pair(j, i)] = matchInfos2;
+				}
+			}
+		}
+	}
 }

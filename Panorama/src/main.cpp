@@ -3,10 +3,7 @@
 #include <string>
 #include <vector>
 #include <list>
-#include <bitset>
 #include <set>
-#include <queue>
-#include <algorithm>
 
 #include <opencv2/core/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
@@ -18,7 +15,7 @@
 #include "ImageMatching.h"
 #include "Calibration.h"
 
-#define DATASET 6
+#define DATASET 1
 
 using namespace std;
 using namespace cv;
@@ -78,175 +75,23 @@ int main(int argc, char *argv[])
 		scene.setImage(i, img);
 	}
 
-	Ptr<FeatureDetector> featureDetector = FeatureDetector::create("SIFT");
-	Ptr<DescriptorExtractor> descriptorExtractor = DescriptorExtractor::create("SIFT");
-
 	vector<ImageDescriptor> descriptors(nbImages);
 
-	for (int i = 0; i < nbImages; ++i) {
-		descriptors[i].image = i;
-		descriptors[i].width = scene.getImage(i).size().width;
-		descriptors[i].height = scene.getImage(i).size().height;
-		featureDetector->detect(scene.getImageBW(i), descriptors[i].keypoints);
-		descriptorExtractor->compute(scene.getImageBW(i), descriptors[i].keypoints, descriptors[i].featureDescriptor);
-	}
+	extractFeatures(scene, descriptors);
 
 	list<MatchGraphEdge> matchGraphEdges;
 	map<pair<int, int>, ImageMatchInfos> matchInfosMap;
 	vector<double> focalLengths;
 
-	for (int i = 0; i < nbImages; ++i) {
-		for (int j = i + 1; j < nbImages; ++j) {
-			if (i == j) {
-				continue;
-			}
-
-			ImageMatchInfos matchInfos = matchImages(descriptors[j], descriptors[i]);
-
-			if (matchInfos.matches.size() >= 4) {
-				computeHomography(descriptors[j], descriptors[i], matchInfos);
-
-				if (matchInfos.confidence > 1) {
-					ImageMatchInfos matchInfos2 = matchInfos;
-
-					matchInfos2.homography = matchInfos2.homography.inv();
-
-					findFocalLength(matchInfos.homography, focalLengths);
-					findFocalLength(matchInfos2.homography, focalLengths);
-
-					matchGraphEdges.push_back(make_pair(make_pair(i, j), matchInfos.confidence));
-					matchGraphEdges.push_back(make_pair(make_pair(j, i), matchInfos2.confidence));
-
-					matchInfosMap[make_pair(i, j)] = matchInfos;
-					matchInfosMap[make_pair(j, i)] = matchInfos2;
-				}
-			}
-		}
-	}
+	pairwiseMatch(scene, descriptors, matchGraphEdges, matchInfosMap, focalLengths);
 
 	if (focalLengths.size() < 1) {
 		cout << "Not enough images" << endl;
 		cin.get();
 		return 1;
 	}
-	
-	vector<int> connexComponents(nbImages);
-	bool fullyConnex = false;
 
-	for (int i = 0; i < nbImages; ++i) {
-		connexComponents[i] = i;
-	}
-
-	vector<vector<bool>> matchSpanningTreeEdges(nbImages);
-
-	for (int i = 0; i < nbImages; ++i) {
-		matchSpanningTreeEdges[i].resize(nbImages);
-
-		for (int j = 0; j < nbImages; ++j) {
-			matchSpanningTreeEdges[i][j] = false;
-		}
-	}
-
-	matchGraphEdges.sort(compareMatchGraphEdge);
-
-	while (!matchGraphEdges.empty() && !fullyConnex) {
-		MatchGraphEdge elt(matchGraphEdges.front());
-		int objectImage = elt.first.first;
-		int sceneImage = elt.first.second;
-
-		matchGraphEdges.pop_front();
-
-		if (connexComponents[objectImage] == connexComponents[sceneImage]) {
-			continue;
-		}
-
-		fullyConnex = true;
-		matchSpanningTreeEdges[objectImage][sceneImage] = true;
-		matchSpanningTreeEdges[sceneImage][objectImage] = true;
-
-		for (int i = 0; i < nbImages; ++i) {
-			if (connexComponents[i] == connexComponents[objectImage]) {
-				connexComponents[i] = connexComponents[sceneImage];
-			}
-
-			if (connexComponents[i] != connexComponents[0]) {
-				fullyConnex = false;
-			}
-		}
-	}
-
-	vector<int> nodeDepth(nbImages);
-
-	for (int i = 0; i < nbImages; ++i) {
-		nodeDepth[i] = numeric_limits<int>::max();
-	}
-
-	for (int i = 0; i < nbImages; ++i) {
-		set<int> visited;
-		queue<pair<int, int>> toVisit;
-		int nbConnections = 0;
-
-		for (int j = 0; j < nbImages; ++j) {
-			if (matchSpanningTreeEdges[i][j]) {
-				nbConnections++;
-			}
-		}
-
-		if (nbConnections != 1) {
-			continue;
-		}
-
-		toVisit.push(make_pair(i, 0));
-		
-		while (!toVisit.empty()) {
-			int current = toVisit.front().first;
-			int depth = toVisit.front().second;
-
-			nodeDepth[current] = min(nodeDepth[current], depth);
-			visited.insert(current);
-
-			for (int j = 0; j < nbImages; ++j) {
-				if (matchSpanningTreeEdges[current][j] && visited.find(j) == visited.end()) {
-					toVisit.push(make_pair(j, depth + 1));
-				}
-			}
-
-			toVisit.pop();
-		}
-	}
-
-	int treeCenter = max_element(nodeDepth.begin(), nodeDepth.end()) - nodeDepth.begin();
-
-	list<MatchGraphEdge> matchSpanningTree;
-
-	{
-		set<int> visited;
-		queue<pair<int, int>> toVisit;
-
-		toVisit.push(make_pair(treeCenter, -1));
-		
-		while (!toVisit.empty()) {
-			int current = toVisit.front().first;
-			int parent = toVisit.front().second;
-
-			visited.insert(current);
-			scene.setParent(current, parent);
-			
-			if (parent != -1) {
-				scene.setTransform(current, matchInfosMap[make_pair(current, parent)].homography);
-			} else {
-				scene.setTransform(current, Mat::eye(Size(3, 3), CV_64F));
-			}
-
-			for (int j = 0; j < nbImages; ++j) {
-				if (matchSpanningTreeEdges[current][j] && visited.find(j) == visited.end()) {
-					toVisit.push(make_pair(j, current));
-				}
-			}
-
-			toVisit.pop();
-		}
-	}
+	scene.makeSceneGraph(matchGraphEdges, matchInfosMap);
 
 	int projSizeX = 1024;
 	int projSizeY = 512;

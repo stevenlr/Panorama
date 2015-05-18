@@ -2,8 +2,13 @@
 #define SCENE_H_
 
 #include <vector>
+#include <list>
+#include <map>
 
 #include <opencv2/core/core.hpp>
+
+struct MatchGraphEdge;
+struct ImageMatchInfos;
 
 class Scene {
 public:
@@ -16,6 +21,7 @@ public:
 	const cv::Mat &getImage(int i) const;
 	const cv::Mat &getImageBW(int i) const;
 
+	int getNbImages() const;
 	int getParent(int image) const;
 	void setParent(int image, int parent);
 	void setTransform(int image, const cv::Mat &transform);
@@ -23,8 +29,14 @@ public:
 	const cv::Mat &getTransform(int image) const;
 	cv::Mat getFullTransform(int image) const;
 	bool checkCycle(int image) const;
+	void makeSceneGraph(std::list<MatchGraphEdge> &matchGraphEdges, std::map<std::pair<int, int>, ImageMatchInfos> &matchInfosMap);
 
 private:
+	void findSpanningTree(std::list<MatchGraphEdge> &matchGraphEdges, std::vector<std::vector<bool>> &matchSpanningTreeEdges);
+	void markNodeDepth(std::vector<int> &nodeDepth, std::vector<std::vector<bool>> &matchSpanningTreeEdges);
+	void makeFinalSceneTree(int treeCenter, std::map<std::pair<int, int>, ImageMatchInfos> &matchInfosMap,
+							std::vector<std::vector<bool>> &matchSpanningTreeEdges);
+
 	int _nbImages;
 	std::vector<cv::Mat> _images;
 	std::vector<cv::Mat> _imagesBW;
