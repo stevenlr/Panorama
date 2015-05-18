@@ -18,7 +18,7 @@
 #include "ImageMatching.h"
 #include "Calibration.h"
 
-#define DATASET 4
+#define DATASET 1
 
 using namespace std;
 using namespace cv;
@@ -52,6 +52,14 @@ int main(int argc, char *argv[])
 #elif DATASET == 5
 	sourceImagesNames.push_back("bus1");
 	sourceImagesNames.push_back("bus2");
+#elif DATASET == 6
+	sourceImagesNames.push_back("cliff1");
+	sourceImagesNames.push_back("cliff2");
+	sourceImagesNames.push_back("cliff3");
+	sourceImagesNames.push_back("cliff4");
+	sourceImagesNames.push_back("cliff5");
+	sourceImagesNames.push_back("cliff6");
+	sourceImagesNames.push_back("cliff7");
 #else
 	return 1;
 #endif
@@ -245,12 +253,16 @@ int main(int argc, char *argv[])
 	double focalLength = getMedianFocalLength(focalLengths);
 	Mat finalImage(Size(projSizeX, projSizeY), scene.getImage(0).type());
 
+	cout << focalLength << endl << endl;
+
 	for (int i = 0; i < nbImages; ++i) {
 		Mat img = scene.getImage(i);
 		Mat map(Size(projSizeX, projSizeY), CV_32FC2, Scalar(-1, -1));
 		const Mat &homography = scene.getFullTransform(i);
-		double fovx = atan2(img.size().width, focalLength);
-		double fovy = atan2(img.size().height, focalLength);
+		double fovx = 2 * atan2(img.size().width, focalLength);
+		double fovy = 2 * atan2(img.size().height, focalLength);
+
+		cout << fovx * 180 / PI << " " << fovy * 180 / PI << endl;
 		
 		Mat pose;
 		double rx, ry, rz;
@@ -264,30 +276,30 @@ int main(int argc, char *argv[])
 		intrinsic.at<double>(1, 2) = -img.size().height / 2;
 
 		homography2 = intrinsic.inv() * homography * intrinsic;
-
-		cameraPoseFromHomography(homography2, pose);
 		findAnglesFromPose(homography2, rx, ry, rz);
 
-		cout << rx << " " << ry << " " << rz << endl;
+		cout << rx << " " << ry << " " << rz << endl << endl;
 
 		double roll = rx;
+		double theta = -ry;
+		double phi = -rz;
 
 		for (int x = 0; x < projSizeX; ++x) {
-			double angleX = ((double) x / projSizeX - 0.5) * PI * 2 + ry;
+			double angleX = ((double) x / projSizeX - 0.5) * PI * 2 + theta;
 
 			if (angleX < -fovx || angleX > fovx) {
 				continue;
 			}
 
 			for (int y = 0; y < projSizeY; ++y) {
-				double angleY = (((double) y / projSizeY - 0.5) * PI - rz) * 0.99;
+				double angleY = (((double) y / projSizeY - 0.5) * PI + phi * 4) * 0.99;
 
 				if (angleY < -fovy || angleY > fovy) {
 					continue;
 				}
 
-				double projX = (tan(angleX) * cos(roll) + tan(angleY) * sin(roll) / cos(angleX)) * focalLength;
-				double projY = (tan(angleY) * cos(roll) / cos(angleX) - sin(roll) * tan(angleX)) * focalLength;
+				double projX = (tan(angleX) * cos(roll) + tan(angleY) * sin(roll) / cos(angleX)) * focalLength / 2;
+				double projY = (tan(angleY) * cos(roll) / cos(angleX) - sin(roll) * tan(angleX)) * focalLength / 2;
 
 				map.at<Vec2f>(y, x)[0] = static_cast<float>(projX + img.size().width / 2);
 				map.at<Vec2f>(y, x)[1] = static_cast<float>(projY + img.size().height / 2);
@@ -306,11 +318,11 @@ int main(int argc, char *argv[])
 	namedWindow("output spherical", WINDOW_AUTOSIZE);
 	imshow("output spherical", finalImage);
 
-	//Mat panorama = scene.composePanorama();
+	/*Mat panorama = scene.composePanorama();
 
-	//namedWindow("output", WINDOW_AUTOSIZE);
-	//imshow("output", panorama);
-	//imwrite("output.jpg", panorama);
+	namedWindow("output", WINDOW_AUTOSIZE);
+	imshow("output", panorama);
+	imwrite("output.jpg", panorama);*/
 
 	waitKey(0);
 
