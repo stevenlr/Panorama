@@ -37,7 +37,7 @@ ImageMatchInfos &ImageMatchInfos::operator=(const ImageMatchInfos &infos)
 
 ImageMatchInfos matchImages(const ImageDescriptor &sceneDescriptor, const ImageDescriptor &objectDescriptor)
 {
-	const float confidence = 0.4;
+	const double confidence = 0.4;
 	ImageMatchInfos matchInfos;
 	Ptr<DescriptorMatcher> descriptorMatcher = DescriptorMatcher::create("FlannBased");
 	vector<vector<DMatch>> matches;
@@ -47,7 +47,7 @@ ImageMatchInfos matchImages(const ImageDescriptor &sceneDescriptor, const ImageD
 
 	descriptorMatcher->knnMatch(objectDescriptor.featureDescriptor, sceneDescriptor.featureDescriptor, matches, 2);
 
-	for (int i = 0; i < matches.size(); ++i) {
+	for (size_t i = 0; i < matches.size(); ++i) {
 		if (matches[i].size() < 2) {
 			continue;
 		}
@@ -67,7 +67,7 @@ ImageMatchInfos matchImages(const ImageDescriptor &sceneDescriptor, const ImageD
 
 	descriptorMatcher->knnMatch(sceneDescriptor.featureDescriptor, objectDescriptor.featureDescriptor, matches, 2);
 
-	for (int i = 0; i < matches.size(); ++i) {
+	for (size_t i = 0; i < matches.size(); ++i) {
 		if (matches[i].size() < 2) {
 			continue;
 		}
@@ -147,7 +147,7 @@ Mat computeHomography(const ImageDescriptor &sceneDescriptor, const ImageDescrip
 	matchesIt = match.matches.cbegin();
 
 	while (matchesIt != match.matches.cend()) {
-		Point2f point = objectDescriptor.keypoints[(*matchesIt++).second].pt;
+		Point2d point = objectDescriptor.keypoints[(*matchesIt++).second].pt;
 		Mat pointH = Mat::ones(Size(1, 3), CV_64F);
 
 		pointH.at<double>(0, 0) = point.x;

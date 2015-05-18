@@ -19,11 +19,11 @@ struct ImageDescriptor {
 };
 
 struct ImageMatchInfos {
-	float avgDistance;
-	float minDistance;
+	double avgDistance;
+	double minDistance;
 	std::vector<std::pair<int, int>> matches;
 	cv::Mat homography;
-	float confidence;
+	double confidence;
 
 	ImageMatchInfos() = default;
 	ImageMatchInfos(const ImageMatchInfos &infos);
@@ -33,7 +33,7 @@ struct ImageMatchInfos {
 struct MatchGraphEdge {
 	int objectImage;
 	int sceneImage;
-	float confidence;
+	double confidence;
 };
 
 inline bool compareMatchGraphEdge(const MatchGraphEdge &first, const MatchGraphEdge &second)
