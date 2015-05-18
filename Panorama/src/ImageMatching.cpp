@@ -97,10 +97,10 @@ ImageMatchInfos matchImages(const ImageDescriptor &sceneDescriptor, const ImageD
 Mat computeHomography(const ImageDescriptor &sceneDescriptor, const ImageDescriptor &objectDescriptor, ImageMatchInfos &match)
 {
 	vector<Point2f> points[2];
-	vector<pair<int, int>>::const_iterator it = match.matches.begin();
+	vector<pair<int, int>>::const_iterator matchesIt = match.matches.cbegin();
 
-	while (it != match.matches.end()) {
-		const pair<int, int> &m = *it++;
+	while (matchesIt != match.matches.cend()) {
+		const pair<int, int> &m = *matchesIt++;
 
 		Point2f scenePoint = sceneDescriptor.keypoints[m.first].pt;
 		Point2f objectPoint = objectDescriptor.keypoints[m.second].pt;
@@ -116,7 +116,7 @@ Mat computeHomography(const ImageDescriptor &sceneDescriptor, const ImageDescrip
 	}
 
 	vector<uchar> inliersMask;
-	int numInliers = 0;
+	int numInliers = 0, numOverlap = 0;
 	Mat homography = findHomography(points[1], points[0], CV_RANSAC, 3.0, inliersMask);
 
 	for (uchar mask : inliersMask) {
@@ -125,7 +125,6 @@ Mat computeHomography(const ImageDescriptor &sceneDescriptor, const ImageDescrip
 		}
 	}
 
-	float confidence = numInliers / (8.0 + 0.3 * match.matches.size());
 	vector<uchar>::const_iterator inliersIt = inliersMask.cbegin();
 	vector<Point2f>::const_iterator pointsIt[2];
 
@@ -145,8 +144,26 @@ Mat computeHomography(const ImageDescriptor &sceneDescriptor, const ImageDescrip
 
 	homography = findHomography(points[1], points[0], CV_RANSAC, 3.0);
 
+	matchesIt = match.matches.cbegin();
+
+	while (matchesIt != match.matches.cend()) {
+		Point2f point = objectDescriptor.keypoints[(*matchesIt++).second].pt;
+		Mat pointH = Mat::ones(Size(1, 3), CV_64F);
+
+		pointH.at<double>(0, 0) = point.x;
+		pointH.at<double>(1, 0) = point.y;
+
+		pointH = homography * pointH;
+		point.x = pointH.at<double>(0, 0) / pointH.at<double>(2, 0);
+		point.y = pointH.at<double>(1, 0) / pointH.at<double>(2, 0);
+
+		if (point.x >= 0 && point.y >= 0 && point.x < sceneDescriptor.width && point.y < sceneDescriptor.height) {
+			++numOverlap;
+		}
+	}
+
 	match.homography = homography;
-	match.confidence = confidence;
+	match.confidence = numInliers / (8.0 + 0.3 * numOverlap);
 
 	return homography;
 }

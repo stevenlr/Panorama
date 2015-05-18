@@ -64,6 +64,8 @@ int main(int argc, char *argv[])
 	int nbImages = sourceImagesNames.size();
 	Scene scene(nbImages);
 
+	cout << "Reading images" << endl;
+
 	for (int i = 0; i < nbImages; ++i) {
 		Mat img = imread("../source_images/" + sourceImagesNames[i] + ".jpg");
 
@@ -77,12 +79,14 @@ int main(int argc, char *argv[])
 
 	vector<ImageDescriptor> descriptors(nbImages);
 
+	cout << "Extract features" << endl;
 	extractFeatures(scene, descriptors);
 
 	list<MatchGraphEdge> matchGraphEdges;
 	map<pair<int, int>, ImageMatchInfos> matchInfosMap;
 	vector<double> focalLengths;
 
+	cout << "Pairwise feature matching" << endl;
 	pairwiseMatch(scene, descriptors, matchGraphEdges, matchInfosMap, focalLengths);
 
 	if (focalLengths.size() < 1) {
@@ -91,14 +95,17 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 
+	cout << "Computing scene graph" << endl;
 	scene.makeSceneGraph(matchGraphEdges, matchInfosMap);
 
 	int projSizeX = 1024;
 	int projSizeY = 512;
 	double focalLength = getMedianFocalLength(focalLengths);
 	
+	cout << "Compositing final image" << endl;
 	Mat finalImage = scene.composePanoramaSpherical(projSizeX, projSizeY, focalLength);
 
+	cout << "Writing final image" << endl;
 	namedWindow("output spherical", WINDOW_AUTOSIZE);
 	imshow("output spherical", finalImage);
 	imwrite("output.jpg", finalImage);
