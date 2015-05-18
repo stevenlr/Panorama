@@ -87,7 +87,7 @@ Mat Scene::getFullTransform(int image) const
 		return _transform[image].clone();
 	}
 }
-
+#include <iostream>
 Mat Scene::composePanorama()
 {
 	vector<Point2f> srcPoints(4);

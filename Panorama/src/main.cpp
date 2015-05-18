@@ -18,7 +18,7 @@
 #include "ImageMatching.h"
 #include "Calibration.h"
 
-#define DATASET 1
+#define DATASET 6
 
 using namespace std;
 using namespace cv;
@@ -253,56 +253,37 @@ int main(int argc, char *argv[])
 	double focalLength = getMedianFocalLength(focalLengths);
 	Mat finalImage(Size(projSizeX, projSizeY), scene.getImage(0).type());
 
-	cout << focalLength << endl << endl;
-
 	for (int i = 0; i < nbImages; ++i) {
 		Mat img = scene.getImage(i);
 		Mat map(Size(projSizeX, projSizeY), CV_32FC2, Scalar(-1, -1));
-		const Mat &homography = scene.getFullTransform(i);
-		double fovx = 2 * atan2(img.size().width, focalLength);
-		double fovy = 2 * atan2(img.size().height, focalLength);
+		Mat homography = scene.getFullTransform(i).clone();
 
-		cout << fovx * 180 / PI << " " << fovy * 180 / PI << endl;
-		
-		Mat pose;
-		double rx, ry, rz;
+		Mat translation = Mat::eye(Size(3, 3), CV_64F);
 
-		Mat homography2;
-		Mat intrinsic = Mat::eye(Size(3, 3), CV_64F);
+		translation.at<double>(0, 2) = -img.size().width / 2;
+		translation.at<double>(1, 2) = -img.size().height / 2;
 
-		intrinsic.at<double>(0, 0) = focalLength;
-		intrinsic.at<double>(1, 1) = focalLength * img.size().width / img.size().height;
-		intrinsic.at<double>(0, 2) = -img.size().width / 2;
-		intrinsic.at<double>(1, 2) = -img.size().height / 2;
+		homography = homography * translation;
 
-		homography2 = intrinsic.inv() * homography * intrinsic;
-		findAnglesFromPose(homography2, rx, ry, rz);
-
-		cout << rx << " " << ry << " " << rz << endl << endl;
-
-		double roll = rx;
-		double theta = -ry;
-		double phi = -rz;
+		Mat invHomography = homography.inv();
 
 		for (int x = 0; x < projSizeX; ++x) {
-			double angleX = ((double) x / projSizeX - 0.5) * PI * 2 + theta;
-
-			if (angleX < -fovx || angleX > fovx) {
-				continue;
-			}
+			double angleX = ((double) x / projSizeX - 0.5) * PI;
 
 			for (int y = 0; y < projSizeY; ++y) {
-				double angleY = (((double) y / projSizeY - 0.5) * PI + phi * 4) * 0.99;
+				double angleY = ((double) y / projSizeY - 0.5) * PI / 2;
 
-				if (angleY < -fovy || angleY > fovy) {
-					continue;
-				}
+				Mat spacePoint = Mat::zeros(Size(1, 3), CV_64F);
+				spacePoint.at<double>(0, 0) = sin(angleX) * cos(angleY) * focalLength;
+				spacePoint.at<double>(1, 0) = sin(angleY) * focalLength;
+				spacePoint.at<double>(2, 0) = cos(angleX) * cos(angleY);
 
-				double projX = (tan(angleX) * cos(roll) + tan(angleY) * sin(roll) / cos(angleX)) * focalLength / 2;
-				double projY = (tan(angleY) * cos(roll) / cos(angleX) - sin(roll) * tan(angleX)) * focalLength / 2;
+				Mat transformedPoint = invHomography * spacePoint;
+				double projX = transformedPoint.at<double>(0, 0) / transformedPoint.at<double>(2, 0);
+				double projY = transformedPoint.at<double>(1, 0) / transformedPoint.at<double>(2, 0);
 
-				map.at<Vec2f>(y, x)[0] = static_cast<float>(projX + img.size().width / 2);
-				map.at<Vec2f>(y, x)[1] = static_cast<float>(projY + img.size().height / 2);
+				map.at<Vec2f>(y, x)[0] = static_cast<float>(projX);
+				map.at<Vec2f>(y, x)[1] = static_cast<float>(projY);
 			}
 		}
 
@@ -317,10 +298,11 @@ int main(int argc, char *argv[])
 
 	namedWindow("output spherical", WINDOW_AUTOSIZE);
 	imshow("output spherical", finalImage);
+	imwrite("output.jpg", finalImage);
 
-	/*Mat panorama = scene.composePanorama();
+	//Mat panorama = scene.composePanorama();
 
-	namedWindow("output", WINDOW_AUTOSIZE);
+	/*namedWindow("output", WINDOW_AUTOSIZE);
 	imshow("output", panorama);
 	imwrite("output.jpg", panorama);*/
 
