@@ -7,6 +7,7 @@
 #include <opencv2/imgproc/imgproc.hpp>
 
 #include "ImageMatching.h"
+#include "Constants.h"
 
 using namespace std;
 using namespace cv;
@@ -97,7 +98,58 @@ Mat Scene::getFullTransform(int image) const
 	}
 }
 
-Mat Scene::composePanorama()
+Mat Scene::composePanoramaSpherical(int projSizeX, int projSizeY, double focalLength)
+{
+	int nbImages = getNbImages();
+	Mat finalImage(Size(projSizeX, projSizeY), getImage(0).type());
+
+	for (int i = 0; i < nbImages; ++i) {
+		Mat img = getImage(i);
+		Mat map(Size(projSizeX, projSizeY), CV_32FC2, Scalar(-1, -1));
+		Mat homography = getFullTransform(i).clone();
+
+		Mat translation = Mat::eye(Size(3, 3), CV_64F);
+
+		translation.at<double>(0, 2) = -img.size().width / 2;
+		translation.at<double>(1, 2) = -img.size().height / 2;
+
+		homography = homography * translation;
+
+		Mat invHomography = homography.inv();
+
+		for (int x = 0; x < projSizeX; ++x) {
+			double angleX = ((double) x / projSizeX - 0.5) * PI;
+
+			for (int y = 0; y < projSizeY; ++y) {
+				double angleY = ((double) y / projSizeY - 0.5) * PI / 2;
+
+				Mat spacePoint = Mat::zeros(Size(1, 3), CV_64F);
+				spacePoint.at<double>(0, 0) = sin(angleX) * cos(angleY) * focalLength;
+				spacePoint.at<double>(1, 0) = sin(angleY) * focalLength;
+				spacePoint.at<double>(2, 0) = cos(angleX) * cos(angleY);
+
+				Mat transformedPoint = invHomography * spacePoint;
+				double projX = transformedPoint.at<double>(0, 0) / transformedPoint.at<double>(2, 0);
+				double projY = transformedPoint.at<double>(1, 0) / transformedPoint.at<double>(2, 0);
+
+				map.at<Vec2f>(y, x)[0] = static_cast<float>(projX);
+				map.at<Vec2f>(y, x)[1] = static_cast<float>(projY);
+			}
+		}
+
+		Mat maskNormal = Mat::ones(img.size(), CV_8U);
+		Mat maskSpherical(Size(projSizeX, projSizeY), CV_8U, Scalar(0));
+		Mat img2(Size(projSizeX, projSizeY), CV_8UC3, Scalar(0, 0, 0));
+
+		remap(maskNormal, maskSpherical, map, Mat(), INTER_LINEAR, BORDER_TRANSPARENT);
+		remap(img, img2, map, Mat(), INTER_LINEAR, BORDER_TRANSPARENT);
+		img2.copyTo(finalImage, maskSpherical);
+	}
+
+	return finalImage;
+}
+
+Mat Scene::composePanoramaPlanar()
 {
 	vector<Point2f> srcPoints(4);
 	vector<Point2f> dstPoints(4);

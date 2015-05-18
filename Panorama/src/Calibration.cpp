@@ -2,6 +2,8 @@
 
 #include <opencv2/stitching/detail/autocalib.hpp>
 
+#include "Constants.h"
+
 using namespace std;
 using namespace cv;
 

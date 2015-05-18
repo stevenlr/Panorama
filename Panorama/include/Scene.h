@@ -25,8 +25,11 @@ public:
 	int getParent(int image) const;
 	void setParent(int image, int parent);
 	void setTransform(int image, const cv::Mat &transform);
-	cv::Mat composePanorama();
 	const cv::Mat &getTransform(int image) const;
+
+	cv::Mat composePanoramaPlanar();
+	cv::Mat composePanoramaSpherical(int projSizeX, int projSizeY, double focalLength);
+
 	cv::Mat getFullTransform(int image) const;
 	bool checkCycle(int image) const;
 	void makeSceneGraph(std::list<MatchGraphEdge> &matchGraphEdges, std::map<std::pair<int, int>, ImageMatchInfos> &matchInfosMap);
