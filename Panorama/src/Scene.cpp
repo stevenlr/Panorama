@@ -112,19 +112,27 @@ namespace {
 
 		return make_pair(minCorner, maxCorner);
 	}
+
+	float getWeight(int x, int size) {
+		return 1 - std::abs((static_cast<float>(x) / size) * 2 - 1);
+	}
 }
+
+#define WEIGHT_MAX 1000.0f
 
 Mat Scene::composePanoramaSpherical(int projSizeX, int projSizeY, double focalLength)
 {
 	Mat finalImage(Size(projSizeX, projSizeY), getImage(0).type());
 	vector<Mat> warpedImages(_nbImages);
 	vector<Mat> warpedMasks(_nbImages);
+	vector<Mat> warpedWeights(_nbImages);
 	vector<pair<Point2d, Point2d>> corners(_nbImages);
 
 	cout << "  Warping images";
 
 	for (int i = 0; i < _nbImages; ++i) {
 		Mat img = getImage(i);
+		Size size = img.size();
 		Mat map(Size(projSizeX, projSizeY), CV_32FC2, Scalar(-1, -1));
 		Mat homography = getFullTransform(i).clone();
 		Point2i minCorner(numeric_limits<int>::max(), numeric_limits<int>::max());
@@ -133,8 +141,8 @@ Mat Scene::composePanoramaSpherical(int projSizeX, int projSizeY, double focalLe
 
 		cout << ".";
 
-		translation.at<double>(0, 2) = -img.size().width / 2;
-		translation.at<double>(1, 2) = -img.size().height / 2;
+		translation.at<double>(0, 2) = -size.width / 2;
+		translation.at<double>(1, 2) = -size.height / 2;
 		homography = homography * translation;
 
 		Mat invHomography = homography.inv();
@@ -154,7 +162,7 @@ Mat Scene::composePanoramaSpherical(int projSizeX, int projSizeY, double focalLe
 				double projX = transformedPoint.at<double>(0, 0) / transformedPoint.at<double>(2, 0);
 				double projY = transformedPoint.at<double>(1, 0) / transformedPoint.at<double>(2, 0);
 
-				if (projX >= 0 && projX < img.size().width && projY >= 0 && projY < img.size().height) {
+				if (projX >= 0 && projX < size.width && projY >= 0 && projY < size.height) {
 					minCorner.x = std::min(minCorner.x, x);
 					minCorner.y = std::min(minCorner.y, y);
 					maxCorner.x = std::max(maxCorner.x, x);
@@ -166,10 +174,20 @@ Mat Scene::composePanoramaSpherical(int projSizeX, int projSizeY, double focalLe
 			}
 		}
 
-		Mat maskNormal = Mat::ones(img.size(), CV_8U);
+		Mat maskNormal = Mat::ones(size, CV_8U);
+		Mat weightNormal(size, CV_32F);
+
+		for (int y = 0; y < size.height; ++y) {
+			float *ptr = weightNormal.ptr<float>(y);
+
+			for (int x = 0; x < size.width; ++x) {
+				*ptr++ = getWeight(x, size.width) * getWeight(y, size.height) * WEIGHT_MAX;
+			}
+		}
 
 		remap(maskNormal, warpedMasks[i], map, Mat(), INTER_LINEAR, BORDER_TRANSPARENT);
 		remap(img, warpedImages[i], map, Mat(), INTER_LINEAR, BORDER_TRANSPARENT);
+		remap(weightNormal, warpedWeights[i], map, Mat(), INTER_LINEAR, BORDER_TRANSPARENT);
 		corners[i] = make_pair(minCorner, maxCorner);
 	}
 
@@ -256,8 +274,98 @@ Mat Scene::composePanoramaSpherical(int projSizeX, int projSizeY, double focalLe
 
 	cout << "  Final compositing" << endl;
 
+	{
+		vector<float *> ptrs(_nbImages);
+
+		for (int y = 0; y < projSizeY; ++y) {
+			for (int i = 0; i < _nbImages; ++i) {
+				ptrs[i] = warpedWeights[i].ptr<float>(y);
+			}
+
+			for (int x = 0; x < projSizeX; ++x) {
+				float maxWeight = numeric_limits<float>::min();
+				int maxWeightImage = -1;
+
+				for (int i = 0; i < _nbImages; ++i) {
+					float weight = *ptrs[i];
+
+					if (weight > maxWeight) {
+						maxWeight = weight;
+
+						if (maxWeightImage != -1) {
+							*ptrs[maxWeightImage] = 0;
+						}
+
+						*ptrs[i] = WEIGHT_MAX;
+						maxWeightImage = i;
+					} else {
+						*ptrs[i] = 0;
+					}
+
+					++ptrs[i];
+				}
+			}
+		}
+	}
+
+	const int nbBands = 3;
+	vector<vector<Mat>> mbWeights(_nbImages);
+	vector<vector<Mat>> mbBands(_nbImages);
+	vector<vector<Mat>> mbImages(_nbImages);
+
+	{
+		for (int i = 0; i < _nbImages; ++i) {
+			float blurDeviation = 5;
+			Mat mask1, mask3;
+
+			warpedMasks[i].convertTo(mask1, CV_32F);
+			mask1 *= WEIGHT_MAX;
+			cvtColor(mask1, mask3, CV_GRAY2RGB);
+
+			mbImages[i].resize(nbBands + 1);
+			mbBands[i].resize(nbBands + 1);
+			mbWeights[i].resize(nbBands + 1);
+
+			warpedImages[i].convertTo(mbImages[i][0], CV_32FC3);
+			mbWeights[i][0] = warpedWeights[i];
+
+			for (int k = 1; k <= nbBands; ++k) {
+				Mat maskBlurred1, maskBlurred3;
+
+				GaussianBlur(mbImages[i][k - 1], mbImages[i][k], Size(0, 0), blurDeviation);
+				GaussianBlur(mbWeights[i][k - 1], mbWeights[i][k], Size(0, 0), blurDeviation);
+				GaussianBlur(mask1, maskBlurred1, Size(0, 0), blurDeviation);
+				GaussianBlur(mask3, maskBlurred3, Size(0, 0), blurDeviation);
+
+				multiply(mbImages[i][k], 2 - (maskBlurred3 / WEIGHT_MAX), mbImages[i][k]);
+				multiply(mbWeights[i][k], 2 - (maskBlurred1 / WEIGHT_MAX), mbWeights[i][k]);
+
+				mbBands[i][k] = mbImages[i][k - 1] - mbImages[i][k];
+
+				blurDeviation *= sqrtf(2 * static_cast<float>(k) + 1);
+			}
+
+			mbBands[i][nbBands] = mbImages[i][nbBands];
+		}
+	}
+
 	for (int i = 0; i < _nbImages; ++i) {
-		warpedImages[i].copyTo(finalImage, warpedMasks[i]);
+		Mat img(finalImage.size(), CV_32FC3, Scalar(0, 0, 0));
+		Mat sumWeights(finalImage.size(), CV_32FC3, Scalar(0, 0, 0));
+
+		for (int k = 1; k <= nbBands; ++k) {
+			Mat weight;
+
+			cvtColor(mbWeights[i][k], weight, CV_GRAY2RGB);
+			multiply(mbBands[i][k], weight / WEIGHT_MAX, mbImages[i][k]);
+
+			sumWeights += weight / WEIGHT_MAX;
+			img += mbImages[i][k];
+		}
+
+		divide(img, sumWeights, img);
+		img.convertTo(img, CV_8UC3);
+		add(finalImage, img, finalImage, warpedMasks[i]);
 	}
 
 	return finalImage;

@@ -114,6 +114,7 @@ int main(int argc, char *argv[])
 	imshow("output", panorama);
 	imwrite("output.jpg", panorama);*/
 
+	cout << "Done" << endl;
 	waitKey(0);
 
 	return 0;
