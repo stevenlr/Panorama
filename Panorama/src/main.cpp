@@ -15,7 +15,7 @@
 #include "ImageMatching.h"
 #include "Calibration.h"
 
-#define DATASET 1
+#define DATASET 6
 
 using namespace std;
 using namespace cv;
@@ -79,14 +79,12 @@ int main(int argc, char *argv[])
 
 	vector<ImageDescriptor> descriptors(nbImages);
 
-	cout << "Extract features" << endl;
 	extractFeatures(scene, descriptors);
 
 	list<MatchGraphEdge> matchGraphEdges;
 	map<pair<int, int>, ImageMatchInfos> matchInfosMap;
 	vector<double> focalLengths;
 
-	cout << "Pairwise feature matching" << endl;
 	pairwiseMatch(scene, descriptors, matchGraphEdges, matchInfosMap, focalLengths);
 
 	if (focalLengths.size() < 1) {

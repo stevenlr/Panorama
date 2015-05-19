@@ -3,6 +3,7 @@
 #include <set>
 #include <queue>
 #include <algorithm>
+#include <iostream>
 
 #include <opencv2/imgproc/imgproc.hpp>
 
@@ -98,6 +99,21 @@ Mat Scene::getFullTransform(int image) const
 	}
 }
 
+namespace {
+	pair<Point2i, Point2i> getOverlappingRegion(const pair<Point2i, Point2i> &a, const pair<Point2i, Point2i> &b)
+	{
+		Point2i maxCorner, minCorner;
+
+		minCorner.x = std::max(a.first.x, b.first.x);
+		minCorner.y = std::max(a.first.y, b.first.y);
+
+		maxCorner.x = std::min(a.second.x, b.second.x);
+		maxCorner.y = std::min(a.second.y, b.second.y);
+
+		return make_pair(minCorner, maxCorner);
+	}
+}
+
 Mat Scene::composePanoramaSpherical(int projSizeX, int projSizeY, double focalLength)
 {
 	Mat finalImage(Size(projSizeX, projSizeY), getImage(0).type());
@@ -105,12 +121,14 @@ Mat Scene::composePanoramaSpherical(int projSizeX, int projSizeY, double focalLe
 	vector<Mat> warpedMasks(_nbImages);
 	vector<pair<Point2d, Point2d>> corners(_nbImages);
 
+	cout << "  Warping images";
+
 	for (int i = 0; i < _nbImages; ++i) {
 		Mat img = getImage(i);
 		Mat map(Size(projSizeX, projSizeY), CV_32FC2, Scalar(-1, -1));
 		Mat homography = getFullTransform(i).clone();
-		Point2d minCorner(numeric_limits<double>::max(), numeric_limits<double>::max());
-		Point2d maxCorner(numeric_limits<double>::min(), numeric_limits<double>::min());
+		Point2i minCorner(numeric_limits<int>::max(), numeric_limits<int>::max());
+		Point2i maxCorner(numeric_limits<int>::min(), numeric_limits<int>::min());
 
 		Mat translation = Mat::eye(Size(3, 3), CV_64F);
 
@@ -137,10 +155,10 @@ Mat Scene::composePanoramaSpherical(int projSizeX, int projSizeY, double focalLe
 				double projY = transformedPoint.at<double>(1, 0) / transformedPoint.at<double>(2, 0);
 
 				if (projX >= 0 && projX < img.size().width && projY >= 0 && projY < img.size().height) {
-					minCorner.x = std::min(minCorner.x, static_cast<double>(x));
-					minCorner.y = std::min(minCorner.y, static_cast<double>(x));
-					maxCorner.x = std::max(maxCorner.x, static_cast<double>(y));
-					maxCorner.y = std::max(maxCorner.y, static_cast<double>(y));
+					minCorner.x = std::min(minCorner.x, x);
+					minCorner.y = std::min(minCorner.y, y);
+					maxCorner.x = std::max(maxCorner.x, x);
+					maxCorner.y = std::max(maxCorner.y, y);
 				}
 
 				map.at<Vec2f>(y, x)[0] = static_cast<float>(projX);
@@ -152,18 +170,102 @@ Mat Scene::composePanoramaSpherical(int projSizeX, int projSizeY, double focalLe
 
 		remap(maskNormal, warpedMasks[i], map, Mat(), INTER_LINEAR, BORDER_TRANSPARENT);
 		remap(img, warpedImages[i], map, Mat(), INTER_LINEAR, BORDER_TRANSPARENT);
-		corners.push_back(make_pair(minCorner, maxCorner));
+		corners[i] = make_pair(minCorner, maxCorner);
+
+		cout << ".";
 	}
 
+	Mat overlapIntensities(Size(_nbImages, _nbImages), CV_64F, Scalar(0));
+	Mat overlapSizes(Size(_nbImages, _nbImages), CV_32S, Scalar(0));
+
+	cout << endl << "  Compensating exposure";
+
 	for (int i = 0; i < _nbImages; ++i) {
+		for (int j = i; j < _nbImages; ++j) {
+			pair<Point2i, Point2i> overlap = getOverlappingRegion(corners[i], corners[j]);
+
+			if (overlap.first.x >= overlap.second.x || overlap.first.y >= overlap.second.y) {
+				continue;
+			}
+
+			Rect region(overlap.first.x, overlap.first.y, overlap.second.x - overlap.first.x, overlap.second.y - overlap.first.y);
+			Mat mask0(warpedMasks[i], region);
+			Mat mask1(warpedMasks[j], region);
+			Mat image0(warpedImages[i], region);
+			Mat image1(warpedImages[j], region);
+			int overlapSize = 0;
+			double overlapIntensity0 = 0;
+			double overlapIntensity1 = 0;
+
+			for (int y = 0; y < region.height; ++y) {
+				uchar *mask0ptr = mask0.ptr<uchar>(y);
+				uchar *mask1ptr = mask1.ptr<uchar>(y);
+				uchar *image0ptr = image0.ptr<uchar>(y);
+				uchar *image1ptr = image1.ptr<uchar>(y);
+
+				for (int x = 0; x < region.width; ++x) {
+					if (*mask0ptr++ != 0 && *mask1ptr++ != 0) {
+						++overlapSize;
+						overlapIntensity0 += saturate_cast<uchar>((*image0ptr++ + *image0ptr++ + *image0ptr++) / 3);
+						overlapIntensity1 += saturate_cast<uchar>((*image1ptr++ + *image1ptr++ + *image1ptr++) / 3);
+					}
+				}
+			}
+
+			overlapSizes.at<int>(i, j) = overlapSize;
+			overlapSizes.at<int>(j, i) = overlapSize;
+			overlapIntensities.at<double>(i, j) = overlapIntensity0 / overlapSize;
+			overlapIntensities.at<double>(j, i) = overlapIntensity1 / overlapSize;
+		}
+
+		cout << ".";
+	}
+
+	vector<double> gains(_nbImages);
+
+	{
+		Mat A(Size(_nbImages, _nbImages), CV_64F);
+		Mat b(Size(1, _nbImages), CV_64F);
+		double gainDeviationFactor = 1.0 / (0.1 * 0.1);
+		double errorDeviationFactor = 1.0 / (10 * 10);
+
+		A.setTo(0);
+		b.setTo(0);
+
 		for (int i = 0; i < _nbImages; ++i) {
-			// TODO: Compute overlaps
+			for (int j = 0; j < _nbImages; ++j) {
+				int N = overlapSizes.at<int>(i, j);
+
+				b.at<double>(i, 0) += gainDeviationFactor * N;
+				A.at<double>(i, i) += gainDeviationFactor * N;
+
+				if (i != j) {
+					double Iij = overlapIntensities.at<double>(i, j);
+					double Iji = overlapIntensities.at<double>(j, i);
+
+					A.at<double>(i, i) += 2 * Iij * Iij * errorDeviationFactor * N;
+					A.at<double>(i, j) -= 2 * Iij * Iji * errorDeviationFactor * N;
+				}
+			}
+		}
+
+		Mat x;
+		solve(A, b, x);
+
+		for (int i = 0; i < _nbImages; ++i) {
+			gains[i] = x.at<double>(i, 0);
+			warpedImages[i] *= gains[i];
 		}
 	}
 
+	cout << endl << "  Final compositing";
+
 	for (int i = 0; i < _nbImages; ++i) {
 		warpedImages[i].copyTo(finalImage, warpedMasks[i]);
+		cout << ".";
 	}
+
+	cout << endl;
 
 	return finalImage;
 }

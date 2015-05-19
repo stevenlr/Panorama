@@ -1,5 +1,7 @@
 #include "ImageMatching.h"
 
+#include <iostream>
+
 #include "Calibration.h"
 
 using namespace std;
@@ -173,13 +175,19 @@ void extractFeatures(const Scene &scene, vector<ImageDescriptor> &descriptors)
 	Ptr<FeatureDetector> featureDetector = FeatureDetector::create("SIFT");
 	Ptr<DescriptorExtractor> descriptorExtractor = DescriptorExtractor::create("SIFT");
 
+	cout << "Extracting features";
+
 	for (int i = 0; i < scene.getNbImages(); ++i) {
 		descriptors[i].image = i;
 		descriptors[i].width = scene.getImage(i).size().width;
 		descriptors[i].height = scene.getImage(i).size().height;
 		featureDetector->detect(scene.getImageBW(i), descriptors[i].keypoints);
 		descriptorExtractor->compute(scene.getImageBW(i), descriptors[i].keypoints, descriptors[i].featureDescriptor);
+
+		cout << ".";
 	}
+
+	cout << endl;
 }
 
 void pairwiseMatch(const Scene &scene,
@@ -189,6 +197,8 @@ void pairwiseMatch(const Scene &scene,
 				   vector<double> &focalLengths)
 {
 	int nbImages = scene.getNbImages();
+
+	cout << "Pairwise feature matching";
 
 	for (int i = 0; i < nbImages; ++i) {
 		for (int j = i + 1; j < nbImages; ++j) {
@@ -227,5 +237,9 @@ void pairwiseMatch(const Scene &scene,
 				}
 			}
 		}
+
+		cout << ".";
 	}
+
+	cout << endl;
 }
