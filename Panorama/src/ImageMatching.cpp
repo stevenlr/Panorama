@@ -178,13 +178,13 @@ void extractFeatures(const Scene &scene, vector<ImageDescriptor> &descriptors)
 	cout << "Extracting features";
 
 	for (int i = 0; i < scene.getNbImages(); ++i) {
+		cout << ".";
+
 		descriptors[i].image = i;
 		descriptors[i].width = scene.getImage(i).size().width;
 		descriptors[i].height = scene.getImage(i).size().height;
 		featureDetector->detect(scene.getImageBW(i), descriptors[i].keypoints);
 		descriptorExtractor->compute(scene.getImageBW(i), descriptors[i].keypoints, descriptors[i].featureDescriptor);
-
-		cout << ".";
 	}
 
 	cout << endl;
@@ -201,6 +201,8 @@ void pairwiseMatch(const Scene &scene,
 	cout << "Pairwise feature matching";
 
 	for (int i = 0; i < nbImages; ++i) {
+		cout << ".";
+
 		for (int j = i + 1; j < nbImages; ++j) {
 			if (i == j) {
 				continue;
@@ -237,8 +239,6 @@ void pairwiseMatch(const Scene &scene,
 				}
 			}
 		}
-
-		cout << ".";
 	}
 
 	cout << endl;

@@ -129,12 +129,12 @@ Mat Scene::composePanoramaSpherical(int projSizeX, int projSizeY, double focalLe
 		Mat homography = getFullTransform(i).clone();
 		Point2i minCorner(numeric_limits<int>::max(), numeric_limits<int>::max());
 		Point2i maxCorner(numeric_limits<int>::min(), numeric_limits<int>::min());
-
 		Mat translation = Mat::eye(Size(3, 3), CV_64F);
+
+		cout << ".";
 
 		translation.at<double>(0, 2) = -img.size().width / 2;
 		translation.at<double>(1, 2) = -img.size().height / 2;
-
 		homography = homography * translation;
 
 		Mat invHomography = homography.inv();
@@ -171,14 +171,12 @@ Mat Scene::composePanoramaSpherical(int projSizeX, int projSizeY, double focalLe
 		remap(maskNormal, warpedMasks[i], map, Mat(), INTER_LINEAR, BORDER_TRANSPARENT);
 		remap(img, warpedImages[i], map, Mat(), INTER_LINEAR, BORDER_TRANSPARENT);
 		corners[i] = make_pair(minCorner, maxCorner);
-
-		cout << ".";
 	}
 
 	Mat overlapIntensities(Size(_nbImages, _nbImages), CV_64F, Scalar(0));
 	Mat overlapSizes(Size(_nbImages, _nbImages), CV_32S, Scalar(0));
 
-	cout << endl << "  Compensating exposure";
+	cout << endl << "  Compensating exposure" << endl;
 
 	for (int i = 0; i < _nbImages; ++i) {
 		for (int j = i; j < _nbImages; ++j) {
@@ -217,8 +215,6 @@ Mat Scene::composePanoramaSpherical(int projSizeX, int projSizeY, double focalLe
 			overlapIntensities.at<double>(i, j) = overlapIntensity0 / overlapSize;
 			overlapIntensities.at<double>(j, i) = overlapIntensity1 / overlapSize;
 		}
-
-		cout << ".";
 	}
 
 	vector<double> gains(_nbImages);
@@ -258,14 +254,11 @@ Mat Scene::composePanoramaSpherical(int projSizeX, int projSizeY, double focalLe
 		}
 	}
 
-	cout << endl << "  Final compositing";
+	cout << "  Final compositing" << endl;
 
 	for (int i = 0; i < _nbImages; ++i) {
 		warpedImages[i].copyTo(finalImage, warpedMasks[i]);
-		cout << ".";
 	}
-
-	cout << endl;
 
 	return finalImage;
 }

@@ -15,7 +15,7 @@
 #include "ImageMatching.h"
 #include "Calibration.h"
 
-#define DATASET 6
+#define DATASET 1
 
 using namespace std;
 using namespace cv;
