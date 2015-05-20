@@ -138,6 +138,10 @@ Mat Scene::composePanoramaSpherical(int projSizeX, int projSizeY, double focalLe
 		Point2i maxCorner(numeric_limits<int>::min(), numeric_limits<int>::min());
 		Mat translation = Mat::eye(Size(3, 3), CV_64F);
 
+		if (homography.size() != Size(3, 3)) {
+			continue;
+		}
+
 		cout << ".";
 
 		translation.at<double>(0, 2) = -size.width / 2;

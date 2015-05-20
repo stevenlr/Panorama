@@ -4,6 +4,7 @@
 #include <vector>
 #include <list>
 #include <set>
+#include <sstream>
 
 #include <opencv2/core/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
@@ -15,7 +16,7 @@
 #include "ImageMatching.h"
 #include "Calibration.h"
 
-#define DATASET 6
+#define DATASET 1
 
 using namespace std;
 using namespace cv;
@@ -57,6 +58,18 @@ int main(int argc, char *argv[])
 	sourceImagesNames.push_back("cliff5");
 	sourceImagesNames.push_back("cliff6");
 	sourceImagesNames.push_back("cliff7");
+#elif DATASET == 7
+	/*for (int i = 1; i <= 14; ++i) {
+		stringstream str;
+
+		str << "mc" << i;
+		sourceImagesNames.push_back(str.str());
+	}*/
+
+	sourceImagesNames.push_back("mc1");
+	sourceImagesNames.push_back("mc8");
+	sourceImagesNames.push_back("mc9");
+	sourceImagesNames.push_back("mc10");
 #else
 	return 1;
 #endif
