@@ -122,7 +122,6 @@ namespace {
 
 Mat Scene::composePanoramaSpherical(int projSizeX, int projSizeY, double focalLength)
 {
-	Mat finalImage(Size(projSizeX, projSizeY), getImage(0).type());
 	vector<Mat> warpedImages(_nbImages);
 	vector<Mat> warpedMasks(_nbImages);
 	vector<Mat> warpedWeights(_nbImages);
@@ -272,7 +271,7 @@ Mat Scene::composePanoramaSpherical(int projSizeX, int projSizeY, double focalLe
 		}
 	}
 
-	cout << "  Final compositing" << endl;
+	cout << "  Building weight masks" << endl;
 
 	{
 		vector<float *> ptrs(_nbImages);
@@ -283,7 +282,7 @@ Mat Scene::composePanoramaSpherical(int projSizeX, int projSizeY, double focalLe
 			}
 
 			for (int x = 0; x < projSizeX; ++x) {
-				float maxWeight = numeric_limits<float>::min();
+				float maxWeight = 0;
 				int maxWeightImage = -1;
 
 				for (int i = 0; i < _nbImages; ++i) {
@@ -301,22 +300,28 @@ Mat Scene::composePanoramaSpherical(int projSizeX, int projSizeY, double focalLe
 					} else {
 						*ptrs[i] = 0;
 					}
+				}
 
+				for (int i = 0; i < _nbImages; ++i) {
 					++ptrs[i];
 				}
 			}
 		}
 	}
 
-	const int nbBands = 3;
+	const int nbBands = 4;
 	vector<vector<Mat>> mbWeights(_nbImages);
 	vector<vector<Mat>> mbBands(_nbImages);
 	vector<vector<Mat>> mbImages(_nbImages);
 
+	cout << "  Building frequency bands";
+
 	{
 		for (int i = 0; i < _nbImages; ++i) {
-			float blurDeviation = 5;
+			float blurDeviation = 2.5;
 			Mat mask1, mask3;
+
+			cout << ".";
 
 			warpedMasks[i].convertTo(mask1, CV_32F);
 			mask1 *= WEIGHT_MAX;
@@ -349,24 +354,33 @@ Mat Scene::composePanoramaSpherical(int projSizeX, int projSizeY, double focalLe
 		}
 	}
 
-	for (int i = 0; i < _nbImages; ++i) {
+	Mat finalImage(Size(projSizeX, projSizeY), getImage(0).type());
+	Mat compositeImage(Size(projSizeX, projSizeY), CV_32FC3, Scalar(0, 0, 0));
+
+	cout << endl << "  Compositing final image";
+
+	for (int k = 1; k <= nbBands; ++k) {
 		Mat img(finalImage.size(), CV_32FC3, Scalar(0, 0, 0));
 		Mat sumWeights(finalImage.size(), CV_32FC3, Scalar(0, 0, 0));
 
-		for (int k = 1; k <= nbBands; ++k) {
+		cout << ".";
+
+		for (int i = 0; i < _nbImages; ++i) {
 			Mat weight;
 
 			cvtColor(mbWeights[i][k], weight, CV_GRAY2RGB);
-			multiply(mbBands[i][k], weight / WEIGHT_MAX, mbImages[i][k]);
 
-			sumWeights += weight / WEIGHT_MAX;
-			img += mbImages[i][k];
+			multiply(mbBands[i][k], weight / WEIGHT_MAX, mbBands[i][k]);
+			add(img, mbBands[i][k], img, warpedMasks[i]);
+			add(sumWeights, weight / WEIGHT_MAX, sumWeights, warpedMasks[i]);
 		}
 
 		divide(img, sumWeights, img);
-		img.convertTo(img, CV_8UC3);
-		add(finalImage, img, finalImage, warpedMasks[i]);
+		add(compositeImage, img, compositeImage);
 	}
+
+	cout << endl;
+	compositeImage.convertTo(finalImage, CV_8UC3);
 
 	return finalImage;
 }
