@@ -306,7 +306,7 @@ Mat Scene::composePanoramaSpherical(int projSizeX, int projSizeY, double focalLe
 		}
 	}
 
-	const int nbBands = 4;
+	const int nbBands = 5;
 	vector<vector<Mat>> mbWeights(_nbImages);
 	vector<vector<Mat>> mbBands(_nbImages);
 	vector<vector<Mat>> mbImages(_nbImages);
@@ -315,7 +315,7 @@ Mat Scene::composePanoramaSpherical(int projSizeX, int projSizeY, double focalLe
 
 	{
 		for (int i = 0; i < _nbImages; ++i) {
-			float blurDeviation = 2.5;
+			float blurDeviation = 10;
 			Mat mask1, mask3;
 
 			cout << ".";
@@ -332,19 +332,12 @@ Mat Scene::composePanoramaSpherical(int projSizeX, int projSizeY, double focalLe
 			mbWeights[i][0] = warpedWeights[i];
 
 			for (int k = 1; k <= nbBands; ++k) {
-				Mat maskBlurred1, maskBlurred3;
-
 				GaussianBlur(mbImages[i][k - 1], mbImages[i][k], Size(0, 0), blurDeviation);
 				GaussianBlur(mbWeights[i][k - 1], mbWeights[i][k], Size(0, 0), blurDeviation);
-				GaussianBlur(mask1, maskBlurred1, Size(0, 0), blurDeviation);
-				GaussianBlur(mask3, maskBlurred3, Size(0, 0), blurDeviation);
-
-				multiply(mbImages[i][k], 2 - (maskBlurred3 / WEIGHT_MAX), mbImages[i][k]);
-				multiply(mbWeights[i][k], 2 - (maskBlurred1 / WEIGHT_MAX), mbWeights[i][k]);
 
 				mbBands[i][k] = mbImages[i][k - 1] - mbImages[i][k];
 
-				blurDeviation *= sqrtf(2 * static_cast<float>(k) + 1);
+				blurDeviation /= sqrtf(2 * static_cast<float>(k) + 1);
 			}
 
 			mbBands[i][nbBands] = mbImages[i][nbBands];
@@ -408,8 +401,6 @@ Mat Scene::composePanoramaSpherical(int projSizeX, int projSizeY, double focalLe
 		mask.convertTo(mask, CV_8U);
 		blender->feed(image, mask * 255, corners[i].first);
 	}
-
-	Mat finalImage;
 
 	blender->blend(finalImage, Mat());
 	finalImage.convertTo(finalImage, CV_8UC3);*/

@@ -16,8 +16,6 @@
 #include "ImageMatching.h"
 #include "Calibration.h"
 
-#define DATASET 1
-
 using namespace std;
 using namespace cv;
 
@@ -27,52 +25,71 @@ int main(int argc, char *argv[])
 	initModule_nonfree();
 
 	vector<string> sourceImagesNames;
+	string setName = "";
+	int setId;
 
-#if DATASET == 1
-	sourceImagesNames.push_back("balcony0");
-	sourceImagesNames.push_back("balcony1");
-	sourceImagesNames.push_back("balcony2");
-#elif DATASET == 2
-	sourceImagesNames.push_back("office1");
-	sourceImagesNames.push_back("office2");
-	sourceImagesNames.push_back("office4");
-	sourceImagesNames.push_back("office3");
-#elif DATASET == 3
-	sourceImagesNames.push_back("building1");
-	sourceImagesNames.push_back("building2");
-	sourceImagesNames.push_back("building3");
-	sourceImagesNames.push_back("building4");
-	sourceImagesNames.push_back("building5");
-	sourceImagesNames.push_back("building6");
-#elif DATASET == 4
-	sourceImagesNames.push_back("mountain1");
-	sourceImagesNames.push_back("mountain2");
-#elif DATASET == 5
-	sourceImagesNames.push_back("bus1");
-	sourceImagesNames.push_back("bus2");
-#elif DATASET == 6
-	sourceImagesNames.push_back("cliff1");
-	sourceImagesNames.push_back("cliff2");
-	sourceImagesNames.push_back("cliff3");
-	sourceImagesNames.push_back("cliff4");
-	sourceImagesNames.push_back("cliff5");
-	sourceImagesNames.push_back("cliff6");
-	sourceImagesNames.push_back("cliff7");
-#elif DATASET == 7
-	/*for (int i = 1; i <= 14; ++i) {
-		stringstream str;
+	cin >> setId;
 
-		str << "mc" << i;
-		sourceImagesNames.push_back(str.str());
-	}*/
+	switch (setId) {
+		case 1:
+			sourceImagesNames.push_back("balcony0");
+			sourceImagesNames.push_back("balcony1");
+			sourceImagesNames.push_back("balcony2");
+			setName = "balcony";
+			break;
+		case 2:
+			sourceImagesNames.push_back("office1");
+			sourceImagesNames.push_back("office2");
+			sourceImagesNames.push_back("office4");
+			sourceImagesNames.push_back("office3");
+			setName = "office";
+			break;
+		case 3:
+			sourceImagesNames.push_back("building1");
+			sourceImagesNames.push_back("building2");
+			sourceImagesNames.push_back("building3");
+			sourceImagesNames.push_back("building4");
+			sourceImagesNames.push_back("building5");
+			sourceImagesNames.push_back("building6");
+			setName = "building";
+			break;
+		case 4:
+			sourceImagesNames.push_back("mountain1");
+			sourceImagesNames.push_back("mountain2");
+			setName = "mountains";
+			break;
+		case 5:
+			sourceImagesNames.push_back("bus1");
+			sourceImagesNames.push_back("bus2");
+			setName = "bus";
+			break;
+		case 6:
+			sourceImagesNames.push_back("cliff1");
+			sourceImagesNames.push_back("cliff2");
+			sourceImagesNames.push_back("cliff3");
+			sourceImagesNames.push_back("cliff4");
+			sourceImagesNames.push_back("cliff5");
+			sourceImagesNames.push_back("cliff6");
+			sourceImagesNames.push_back("cliff7");
+			setName = "cliff";
+			break;
+		case 7:
+			/*for (int i = 1; i <= 14; ++i) {
+				stringstream str;
 
-	sourceImagesNames.push_back("mc1");
-	sourceImagesNames.push_back("mc8");
-	sourceImagesNames.push_back("mc9");
-	sourceImagesNames.push_back("mc10");
-#else
-	return 1;
-#endif
+				str << "mc" << i;
+				sourceImagesNames.push_back(str.str());
+			}*/
+
+			sourceImagesNames.push_back("mc1");
+			sourceImagesNames.push_back("mc8");
+			sourceImagesNames.push_back("mc9");
+			sourceImagesNames.push_back("mc10");
+			setName = "mc";
+			break;
+		default:
+			return 1;
+	}
 
 	int nbImages = sourceImagesNames.size();
 	Scene scene(nbImages);
@@ -119,7 +136,12 @@ int main(int argc, char *argv[])
 	cout << "Writing final image" << endl;
 	namedWindow("output spherical", WINDOW_AUTOSIZE);
 	imshow("output spherical", finalImage);
-	imwrite("output.jpg", finalImage);
+
+	stringstream sstr;
+
+	sstr << "multiband-" << setName << ".jpg";
+
+	imwrite(sstr.str(), finalImage);
 
 	//Mat panorama = scene.composePanoramaPlanar();
 
