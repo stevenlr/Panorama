@@ -127,6 +127,12 @@ Mat Scene::composePanoramaSpherical(int projSizeX, int projSizeY, double focalLe
 	vector<Mat> warpedMasks(_nbImages);
 	vector<Mat> warpedWeights(_nbImages);
 	vector<pair<Point2d, Point2d>> corners(_nbImages);
+	Point finalMinCorner, finalMaxCorner;
+
+	finalMinCorner.x = numeric_limits<int>::max();
+	finalMinCorner.y = numeric_limits<int>::max();
+	finalMaxCorner.x = numeric_limits<int>::min();
+	finalMaxCorner.y = numeric_limits<int>::min();
 
 	cout << "  Warping images";
 
@@ -185,6 +191,11 @@ Mat Scene::composePanoramaSpherical(int projSizeX, int projSizeY, double focalLe
 		corners[i] = make_pair(minCorner, maxCorner);
 
 		distanceTransform(warpedMasks[i], warpedWeights[i], CV_DIST_L1, 3);
+
+		finalMinCorner.x = std::min(finalMinCorner.x, minCorner.x);
+		finalMinCorner.y = std::min(finalMinCorner.y, minCorner.y);
+		finalMaxCorner.x = std::max(finalMaxCorner.x, maxCorner.x);
+		finalMaxCorner.y = std::max(finalMaxCorner.y, maxCorner.y);
 	}
 
 	Mat overlapIntensities(Size(_nbImages, _nbImages), CV_64F, Scalar(0));
@@ -273,12 +284,12 @@ Mat Scene::composePanoramaSpherical(int projSizeX, int projSizeY, double focalLe
 	{
 		vector<float *> ptrs(_nbImages);
 
-		for (int y = 0; y < projSizeY; ++y) {
+		for (int y = finalMinCorner.y; y <= finalMaxCorner.y; ++y) {
 			for (int i = 0; i < _nbImages; ++i) {
-				ptrs[i] = warpedWeights[i].ptr<float>(y);
+				ptrs[i] = warpedWeights[i].ptr<float>(y) + finalMinCorner.x;
 			}
 
-			for (int x = 0; x < projSizeX; ++x) {
+			for (int x = finalMinCorner.x; x <= finalMaxCorner.x; ++x) {
 				float maxWeight = 0;
 				int maxWeightImage = -1;
 
@@ -329,7 +340,14 @@ Mat Scene::composePanoramaSpherical(int projSizeX, int projSizeY, double focalLe
 			mbWeights[i].resize(nbBands + 1);
 
 			warpedImages[i].convertTo(mbImages[i][0], CV_32FC3);
-			mbWeights[i][0] = warpedWeights[i];
+			mbImages[i][0] = mbImages[i][0].colRange(finalMinCorner.x, finalMaxCorner.x)
+										   .rowRange(finalMinCorner.y, finalMaxCorner.y);
+
+			mbWeights[i][0] = warpedWeights[i].colRange(finalMinCorner.x, finalMaxCorner.x)
+											  .rowRange(finalMinCorner.y, finalMaxCorner.y);
+			
+			warpedMasks[i] = warpedMasks[i].colRange(finalMinCorner.x, finalMaxCorner.x)
+										   .rowRange(finalMinCorner.y, finalMaxCorner.y);
 
 			for (int k = 1; k <= nbBands; ++k) {
 				GaussianBlur(mbImages[i][k - 1], mbImages[i][k], Size(0, 0), blurDeviation);
@@ -344,8 +362,9 @@ Mat Scene::composePanoramaSpherical(int projSizeX, int projSizeY, double focalLe
 		}
 	}
 
-	Mat finalImage(Size(projSizeX, projSizeY), getImage(0).type());
-	Mat compositeImage(Size(projSizeX, projSizeY), CV_32FC3, Scalar(0, 0, 0));
+	Size finalImageSize(finalMaxCorner.x - finalMinCorner.x, finalMaxCorner.y - finalMinCorner.y);
+	Mat finalImage(finalImageSize, getImage(0).type());
+	Mat compositeImage(finalImage.size(), CV_32FC3, Scalar(0, 0, 0));
 
 	cout << endl << "  Compositing final image";
 

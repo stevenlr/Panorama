@@ -19,16 +19,13 @@
 using namespace std;
 using namespace cv;
 
-int main(int argc, char *argv[])
+int composePanorama(int setId)
 {
 	initModule_features2d();
 	initModule_nonfree();
 
 	vector<string> sourceImagesNames;
 	string setName = "";
-	int setId;
-
-	cin >> setId;
 
 	switch (setId) {
 		case 1:
@@ -59,11 +56,6 @@ int main(int argc, char *argv[])
 			setName = "mountains";
 			break;
 		case 5:
-			sourceImagesNames.push_back("bus1");
-			sourceImagesNames.push_back("bus2");
-			setName = "bus";
-			break;
-		case 6:
 			sourceImagesNames.push_back("cliff1");
 			sourceImagesNames.push_back("cliff2");
 			sourceImagesNames.push_back("cliff3");
@@ -72,20 +64,6 @@ int main(int argc, char *argv[])
 			sourceImagesNames.push_back("cliff6");
 			sourceImagesNames.push_back("cliff7");
 			setName = "cliff";
-			break;
-		case 7:
-			/*for (int i = 1; i <= 14; ++i) {
-				stringstream str;
-
-				str << "mc" << i;
-				sourceImagesNames.push_back(str.str());
-			}*/
-
-			sourceImagesNames.push_back("mc1");
-			sourceImagesNames.push_back("mc8");
-			sourceImagesNames.push_back("mc9");
-			sourceImagesNames.push_back("mc10");
-			setName = "mc";
 			break;
 		default:
 			return 1;
@@ -134,23 +112,23 @@ int main(int argc, char *argv[])
 	Mat finalImage = scene.composePanoramaSpherical(projSizeX, projSizeY, focalLength);
 
 	cout << "Writing final image" << endl;
-	namedWindow("output spherical", WINDOW_AUTOSIZE);
-	imshow("output spherical", finalImage);
-
 	stringstream sstr;
 
 	sstr << "multiband-" << setName << ".jpg";
-
 	imwrite(sstr.str(), finalImage);
-
-	//Mat panorama = scene.composePanoramaPlanar();
-
-	/*namedWindow("output", WINDOW_AUTOSIZE);
-	imshow("output", panorama);
-	imwrite("output.jpg", panorama);*/
+	namedWindow(sstr.str(), WINDOW_AUTOSIZE);
+	imshow(sstr.str(), finalImage);
 
 	cout << "Done" << endl;
-	waitKey(0);
 
 	return 0;
+}
+
+int main(int argc, char *argv[])
+{
+	for (int i = 1; i <= 6; ++i) {
+		composePanorama(i);
+	}
+
+	waitKey(0);
 }
