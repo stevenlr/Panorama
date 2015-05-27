@@ -6,6 +6,7 @@
 #include <iostream>
 
 #include <opencv2/imgproc/imgproc.hpp>
+#include <opencv2/stitching/detail/blenders.hpp>
 
 #include "ImageMatching.h"
 #include "Constants.h"
@@ -178,20 +179,12 @@ Mat Scene::composePanoramaSpherical(int projSizeX, int projSizeY, double focalLe
 		}
 
 		Mat maskNormal = Mat::ones(size, CV_8U);
-		Mat weightNormal(size, CV_32F);
-
-		for (int y = 0; y < size.height; ++y) {
-			float *ptr = weightNormal.ptr<float>(y);
-
-			for (int x = 0; x < size.width; ++x) {
-				*ptr++ = getWeight(x, size.width) * getWeight(y, size.height) * WEIGHT_MAX;
-			}
-		}
 
 		remap(maskNormal, warpedMasks[i], map, Mat(), INTER_LINEAR, BORDER_TRANSPARENT);
 		remap(img, warpedImages[i], map, Mat(), INTER_LINEAR, BORDER_TRANSPARENT);
-		remap(weightNormal, warpedWeights[i], map, Mat(), INTER_LINEAR, BORDER_TRANSPARENT);
 		corners[i] = make_pair(minCorner, maxCorner);
+
+		distanceTransform(warpedMasks[i], warpedWeights[i], CV_DIST_L1, 3);
 	}
 
 	Mat overlapIntensities(Size(_nbImages, _nbImages), CV_64F, Scalar(0));
@@ -385,6 +378,41 @@ Mat Scene::composePanoramaSpherical(int projSizeX, int projSizeY, double focalLe
 
 	cout << endl;
 	compositeImage.convertTo(finalImage, CV_8UC3);
+
+	/*Ptr<detail::Blender> blender = detail::Blender::createDefault(detail::Blender::MULTI_BAND);
+
+	(reinterpret_cast<detail::MultiBandBlender *>(&blender))->setNumBands(5);
+
+	{
+		vector<Point> blendCorners(_nbImages);
+		vector<Size> blendSizes(_nbImages);
+
+		for (int i = 0; i < _nbImages; ++i) {
+			blendCorners[i] = corners[i].first;
+			blendSizes[i].width = static_cast<int>(corners[i].second.x - corners[i].first.x);
+			blendSizes[i].height = static_cast<int>(corners[i].second.y - corners[i].first.y);
+		}
+
+		blender->prepare(blendCorners, blendSizes);
+	}
+
+	for (int i = 0; i < _nbImages; ++i) {
+		Mat image, mask;
+
+		image = warpedImages[i].colRange(corners[i].first.x, corners[i].second.x)
+							   .rowRange(corners[i].first.y, corners[i].second.y);
+
+		mask = warpedWeights[i].colRange(corners[i].first.x, corners[i].second.x)
+							   .rowRange(corners[i].first.y, corners[i].second.y);
+
+		mask.convertTo(mask, CV_8U);
+		blender->feed(image, mask * 255, corners[i].first);
+	}
+
+	Mat finalImage;
+
+	blender->blend(finalImage, Mat());
+	finalImage.convertTo(finalImage, CV_8UC3);*/
 
 	return finalImage;
 }
