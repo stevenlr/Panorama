@@ -318,111 +318,75 @@ Mat Scene::composePanoramaSpherical(int projSizeX, int projSizeY, double focalLe
 	}
 
 	const int nbBands = 5;
-	vector<vector<Mat>> mbWeights(_nbImages);
-	vector<vector<Mat>> mbBands(_nbImages);
-	vector<vector<Mat>> mbImages(_nbImages);
+	Mat mbWeight, mbRgbWeight;
+	Mat mbBand;
+	Mat mbImage, mbNextImage;
+	vector<Mat> mbSumWeight(nbBands);
+	vector<Mat> mbSumImage(nbBands);
+	Size finalImageSize(finalMaxCorner.x - finalMinCorner.x, finalMaxCorner.y - finalMinCorner.y);
+
+	for (int i = 0; i < nbBands; ++i) {
+		mbSumWeight[i].create(finalImageSize, CV_32F);
+		mbSumImage[i].create(finalImageSize, CV_32FC3);
+
+		mbSumWeight[i].setTo(0);
+		mbSumImage[i].setTo(0);
+	}
 
 	cout << "  Building frequency bands";
 
-	{
-		for (int i = 0; i < _nbImages; ++i) {
-			float blurDeviation = 10;
-			Mat mask1, mask3;
-
-			cout << ".";
-
-			warpedMasks[i].convertTo(mask1, CV_32F);
-			mask1 *= WEIGHT_MAX;
-			cvtColor(mask1, mask3, CV_GRAY2RGB);
-
-			mbImages[i].resize(nbBands + 1);
-			mbBands[i].resize(nbBands + 1);
-			mbWeights[i].resize(nbBands + 1);
-
-			warpedImages[i].convertTo(mbImages[i][0], CV_32FC3);
-			mbImages[i][0] = mbImages[i][0].colRange(finalMinCorner.x, finalMaxCorner.x)
-										   .rowRange(finalMinCorner.y, finalMaxCorner.y);
-
-			mbWeights[i][0] = warpedWeights[i].colRange(finalMinCorner.x, finalMaxCorner.x)
-											  .rowRange(finalMinCorner.y, finalMaxCorner.y);
-			
-			warpedMasks[i] = warpedMasks[i].colRange(finalMinCorner.x, finalMaxCorner.x)
-										   .rowRange(finalMinCorner.y, finalMaxCorner.y);
-
-			for (int k = 1; k <= nbBands; ++k) {
-				GaussianBlur(mbImages[i][k - 1], mbImages[i][k], Size(0, 0), blurDeviation);
-				GaussianBlur(mbWeights[i][k - 1], mbWeights[i][k], Size(0, 0), blurDeviation);
-
-				mbBands[i][k] = mbImages[i][k - 1] - mbImages[i][k];
-
-				blurDeviation /= sqrtf(2 * static_cast<float>(k) + 1);
-			}
-
-			mbBands[i][nbBands] = mbImages[i][nbBands];
-		}
-	}
-
-	Size finalImageSize(finalMaxCorner.x - finalMinCorner.x, finalMaxCorner.y - finalMinCorner.y);
-	Mat finalImage(finalImageSize, getImage(0).type());
-	Mat compositeImage(finalImage.size(), CV_32FC3, Scalar(0, 0, 0));
-
-	cout << endl << "  Compositing final image";
-
-	for (int k = 1; k <= nbBands; ++k) {
-		Mat img(finalImage.size(), CV_32FC3, Scalar(0, 0, 0));
-		Mat sumWeights(finalImage.size(), CV_32FC3, Scalar(0, 0, 0));
+	for (int i = 0; i < _nbImages; ++i) {
+		float blurDeviation = 10;
 
 		cout << ".";
 
-		for (int i = 0; i < _nbImages; ++i) {
-			Mat weight;
+		warpedImages[i].colRange(finalMinCorner.x, finalMaxCorner.x)
+						.rowRange(finalMinCorner.y, finalMaxCorner.y)
+						.copyTo(mbImage);
+		mbImage.convertTo(mbImage, CV_32FC3);
 
-			cvtColor(mbWeights[i][k], weight, CV_GRAY2RGB);
+		warpedWeights[i].colRange(finalMinCorner.x, finalMaxCorner.x)
+						.rowRange(finalMinCorner.y, finalMaxCorner.y)
+						.copyTo(mbWeight);
+			
+		warpedMasks[i] = warpedMasks[i].colRange(finalMinCorner.x, finalMaxCorner.x)
+									   .rowRange(finalMinCorner.y, finalMaxCorner.y);
 
-			multiply(mbBands[i][k], weight / WEIGHT_MAX, mbBands[i][k]);
-			add(img, mbBands[i][k], img, warpedMasks[i]);
-			add(sumWeights, weight / WEIGHT_MAX, sumWeights, warpedMasks[i]);
+		for (int k = 0; k < nbBands; ++k) {
+			GaussianBlur(mbImage, mbNextImage, Size(0, 0), blurDeviation);
+			GaussianBlur(mbWeight, mbWeight, Size(0, 0), blurDeviation);
+
+			mbBand = mbImage - mbNextImage;
+
+			cvtColor(mbWeight, mbRgbWeight, CV_GRAY2RGB);
+
+			if (k != nbBands - 1) {
+				multiply(mbBand, mbRgbWeight / WEIGHT_MAX, mbBand);
+			} else {
+				multiply(mbNextImage, mbRgbWeight / WEIGHT_MAX, mbBand);
+			}
+
+			add(mbSumImage[k], mbBand, mbSumImage[k], warpedMasks[i]);
+			add(mbSumWeight[k], mbWeight, mbSumWeight[k], warpedMasks[i]);
+
+			blurDeviation /= sqrtf(2 * static_cast<float>(k) + 1);
+			mbImage = mbNextImage;
 		}
-
-		divide(img, sumWeights, img);
-		add(compositeImage, img, compositeImage);
 	}
 
-	cout << endl;
+	cout << endl << "  Compositing final image" << endl;
+
+	Mat finalImage(finalImageSize, getImage(0).type());
+	Mat compositeImage(finalImage.size(), CV_32FC3, Scalar(0, 0, 0));
+	Mat weightRgb;
+
+	for (int k = 0; k < nbBands; ++k) {
+		cvtColor(mbSumWeight[k], weightRgb, CV_GRAY2RGB);
+		divide(mbSumImage[k], weightRgb / WEIGHT_MAX, mbSumImage[k]);
+		add(compositeImage, mbSumImage[k], compositeImage);
+	}
+
 	compositeImage.convertTo(finalImage, CV_8UC3);
-
-	/*Ptr<detail::Blender> blender = detail::Blender::createDefault(detail::Blender::MULTI_BAND);
-
-	(reinterpret_cast<detail::MultiBandBlender *>(&blender))->setNumBands(5);
-
-	{
-		vector<Point> blendCorners(_nbImages);
-		vector<Size> blendSizes(_nbImages);
-
-		for (int i = 0; i < _nbImages; ++i) {
-			blendCorners[i] = corners[i].first;
-			blendSizes[i].width = static_cast<int>(corners[i].second.x - corners[i].first.x);
-			blendSizes[i].height = static_cast<int>(corners[i].second.y - corners[i].first.y);
-		}
-
-		blender->prepare(blendCorners, blendSizes);
-	}
-
-	for (int i = 0; i < _nbImages; ++i) {
-		Mat image, mask;
-
-		image = warpedImages[i].colRange(corners[i].first.x, corners[i].second.x)
-							   .rowRange(corners[i].first.y, corners[i].second.y);
-
-		mask = warpedWeights[i].colRange(corners[i].first.x, corners[i].second.x)
-							   .rowRange(corners[i].first.y, corners[i].second.y);
-
-		mask.convertTo(mask, CV_8U);
-		blender->feed(image, mask * 255, corners[i].first);
-	}
-
-	blender->blend(finalImage, Mat());
-	finalImage.convertTo(finalImage, CV_8UC3);*/
 
 	return finalImage;
 }

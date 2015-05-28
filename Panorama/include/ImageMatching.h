@@ -24,8 +24,11 @@ struct ImageMatchInfos {
 	std::vector<std::pair<int, int>> matches;
 	cv::Mat homography;
 	double confidence;
+	int nbInliers;
+	int nbOverlaps;
+	std::vector<uchar> inliersMask;
 
-	ImageMatchInfos() = default;
+	ImageMatchInfos();
 	ImageMatchInfos(const ImageMatchInfos &infos);
 	ImageMatchInfos &operator=(const ImageMatchInfos &infos);
 };

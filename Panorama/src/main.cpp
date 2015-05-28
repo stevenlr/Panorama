@@ -104,8 +104,9 @@ int composePanorama(int setId)
 	cout << "Computing scene graph" << endl;
 	scene.makeSceneGraph(matchGraphEdges, matchInfosMap);
 
-	int projSizeX = 1024;
-	int projSizeY = 512;
+	float a = 1;
+	int projSizeX = 1024 * a;
+	int projSizeY = 512 * a;
 	double focalLength = getMedianFocalLength(focalLengths);
 	
 	cout << "Compositing final image" << endl;
@@ -126,9 +127,12 @@ int composePanorama(int setId)
 
 int main(int argc, char *argv[])
 {
-	for (int i = 1; i <= 6; ++i) {
+	/*for (int i = 1; i <= 6; ++i) {
 		composePanorama(i);
-	}
+		waitKey(1);
+	}*/
+
+	composePanorama(3);
 
 	waitKey(0);
 }

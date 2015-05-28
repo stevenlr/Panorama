@@ -7,16 +7,32 @@
 using namespace std;
 using namespace cv;
 
+ImageMatchInfos::ImageMatchInfos()
+{
+	avgDistance = 0;
+	minDistance = 0;
+	confidence = 0;
+	nbInliers = 0;
+	nbOverlaps = 0;
+
+	homography = Mat();
+}
+
 ImageMatchInfos::ImageMatchInfos(const ImageMatchInfos &infos)
 {
 	avgDistance = infos.avgDistance;
 	minDistance = infos.minDistance;
 	confidence = infos.confidence;
+	nbInliers = infos.nbInliers;
+	nbOverlaps = infos.nbOverlaps;
 
 	homography = infos.homography.clone();
 
 	matches.resize(infos.matches.size());
 	copy(infos.matches.begin(), infos.matches.end(), matches.begin());
+
+	inliersMask.resize(infos.inliersMask.size());
+	copy(infos.inliersMask.begin(), infos.inliersMask.end(), inliersMask.begin());
 }
 
 ImageMatchInfos &ImageMatchInfos::operator=(const ImageMatchInfos &infos)
@@ -28,11 +44,16 @@ ImageMatchInfos &ImageMatchInfos::operator=(const ImageMatchInfos &infos)
 	avgDistance = infos.avgDistance;
 	minDistance = infos.minDistance;
 	confidence = infos.confidence;
+	nbInliers = infos.nbInliers;
+	nbOverlaps = infos.nbOverlaps;
 
 	homography = infos.homography.clone();
 
 	matches.resize(infos.matches.size());
 	copy(infos.matches.begin(), infos.matches.end(), matches.begin());
+
+	inliersMask.resize(infos.inliersMask.size());
+	copy(infos.inliersMask.begin(), infos.inliersMask.end(), inliersMask.begin());
 
 	return *this;
 }
@@ -101,6 +122,10 @@ Mat computeHomography(const ImageDescriptor &sceneDescriptor, const ImageDescrip
 	vector<Point2f> points[2];
 	vector<pair<int, int>>::const_iterator matchesIt = match.matches.cbegin();
 
+	match.nbInliers = 0;
+	match.nbOverlaps = 0;
+	match.inliersMask.clear();
+
 	while (matchesIt != match.matches.cend()) {
 		const pair<int, int> &m = *matchesIt++;
 
@@ -117,24 +142,22 @@ Mat computeHomography(const ImageDescriptor &sceneDescriptor, const ImageDescrip
 		points[1].push_back(objectPoint);
 	}
 
-	vector<uchar> inliersMask;
-	int numInliers = 0, numOverlap = 0;
-	Mat homography = findHomography(points[1], points[0], CV_RANSAC, 3.0, inliersMask);
+	Mat homography = findHomography(points[1], points[0], CV_RANSAC, 3.0, match.inliersMask);
 
-	for (uchar mask : inliersMask) {
+	for (uchar mask : match.inliersMask) {
 		if (mask) {
-			++numInliers;
+			match.nbInliers++;
 		}
 	}
 
-	vector<uchar>::const_iterator inliersIt = inliersMask.cbegin();
+	vector<uchar>::const_iterator inliersIt;
 	vector<Point2f>::const_iterator pointsIt[2];
 
-	inliersIt = inliersMask.cbegin();
+	inliersIt = match.inliersMask.cbegin();
 	pointsIt[0] = points[0].begin();
 	pointsIt[1] = points[1].begin();
 
-	while (inliersIt != inliersMask.cend()) {
+	while (inliersIt != match.inliersMask.cend()) {
 		if (*inliersIt++) {
 			pointsIt[0]++;
 			pointsIt[1]++;
@@ -160,12 +183,12 @@ Mat computeHomography(const ImageDescriptor &sceneDescriptor, const ImageDescrip
 		point.y = pointH.at<double>(1, 0) / pointH.at<double>(2, 0);
 
 		if (point.x >= 0 && point.y >= 0 && point.x < sceneDescriptor.width && point.y < sceneDescriptor.height) {
-			++numOverlap;
+			match.nbOverlaps++;
 		}
 	}
 
 	match.homography = homography;
-	match.confidence = numInliers / (8.0 + 0.3 * numOverlap);
+	match.confidence = match.nbInliers / (8.0 + 0.3 * match.nbOverlaps);
 
 	return homography;
 }
