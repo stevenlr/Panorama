@@ -14,9 +14,6 @@ class Scene {
 public:
 	Scene(int nbImages);
 
-	Scene(const Scene &) = delete;
-	Scene &operator=(const Scene &) = delete;
-
 	void setImage(int i, const cv::Mat &img);
 	const cv::Mat &getImage(int i) const;
 	const cv::Mat &getImageBW(int i) const;
@@ -35,6 +32,9 @@ public:
 	void makeSceneGraph(std::list<MatchGraphEdge> &matchGraphEdges, std::map<std::pair<int, int>, ImageMatchInfos> &matchInfosMap);
 
 private:
+	Scene(const Scene &);
+	Scene &operator=(const Scene &);
+
 	void findSpanningTree(std::list<MatchGraphEdge> &matchGraphEdges, std::vector<std::vector<bool>> &matchSpanningTreeEdges);
 	void markNodeDepth(std::vector<int> &nodeDepth, std::vector<std::vector<bool>> &matchSpanningTreeEdges);
 	void makeFinalSceneTree(int treeCenter, std::map<std::pair<int, int>, ImageMatchInfos> &matchInfosMap,
