@@ -12,7 +12,8 @@
 #include <opencv2/calib3d/calib3d.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
 
-#include "Scene.h"
+#include "ImageRegistry.h"
+#include "MatchGraph.h"
 #include "ImageMatching.h"
 #include "Calibration.h"
 
@@ -70,30 +71,30 @@ int composePanorama(int setId)
 	}
 
 	int nbImages = sourceImagesNames.size();
-	Scene scene(nbImages);
+	ImagesRegistry images;
 
-	cout << "Reading images" << endl;
+	cout << "Reading images and extracting features";
 
 	for (int i = 0; i < nbImages; ++i) {
 		Mat img = imread("../source_images/" + sourceImagesNames[i] + ".jpg");
+
+		cout << ".";
 
 		if (!img.data) {
 			cerr << "Error when opening image " << sourceImagesNames[i] << endl;
 			return 1;
 		}
 
-		scene.setImage(i, img);
+		images.addImage(img);
 	}
 
-	vector<ImageDescriptor> descriptors(nbImages);
+	cout << endl;
 
-	extractFeatures(scene, descriptors);
+	MatchGraph graph(images);
 
 	list<MatchGraphEdge> matchGraphEdges;
 	map<pair<int, int>, ImageMatchInfos> matchInfosMap;
 	vector<double> focalLengths;
-
-	pairwiseMatch(scene, descriptors, matchGraphEdges, matchInfosMap, focalLengths);
 
 	if (focalLengths.size() < 1) {
 		cout << "Not enough images" << endl;
