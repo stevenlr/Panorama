@@ -8,49 +8,29 @@
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/stitching/detail/blenders.hpp>
 
-#include "ImageMatching.h"
 #include "Constants.h"
 
 using namespace std;
 using namespace cv;
 
-Scene::Scene(int nbImages)
+Scene::Scene()
 {
-	assert(nbImages > 0);
-
-	_nbImages = nbImages;
-	_images.resize(_nbImages);
-	_imagesBW.resize(_nbImages);
-	
-	for (int i = 0; i < _nbImages; ++i) {
-		_transform.push_back(Mat());
-		_parent.push_back(-1);
-	}
+	_estimatedFocalLength = -1;
+	_nbImages = 0;
 }
 
-void Scene::setImage(int i, const Mat &img)
+void Scene::setEstimatedFocalLength(double f)
 {
-	assert(i >= 0 && i < _nbImages);
-
-	Mat imgBW;
-
-	_images[i] = img;
-	cvtColor(img, imgBW, CV_RGB2GRAY);
-	_imagesBW[i] = imgBW;
+	_estimatedFocalLength = f;
 }
 
-const Mat &Scene::getImage(int i) const
+void Scene::addImage(int id)
 {
-	assert(i >= 0 && i < _nbImages);
-
-	return _images[i];
-}
-
-const cv::Mat &Scene::getImageBW(int i) const
-{
-	assert(i >= 0 && i < _nbImages);
-
-	return _imagesBW[i];
+	_reverseIds.insert(make_pair(id, _nbImages));
+	_nbImages++;
+	_images.push_back(id);
+	_transform.push_back(Mat());
+	_parent.push_back(-1);
 }
 
 int Scene::getNbImages() const
@@ -58,10 +38,25 @@ int Scene::getNbImages() const
 	return _nbImages;
 }
 
+int Scene::getImage(int id) const
+{
+	assert(id >= 0 && id < _nbImages);
+	return _images[id];
+}
+
+int Scene::getIdInScene(int image) const
+{
+	map<int, int>::const_iterator it = _reverseIds.find(image);
+
+	if (it == _reverseIds.cend()) {
+		return -1;
+	}
+
+	return it->second;
+}
+
 int Scene::getParent(int image) const
 {
-	assert(image >= 0 && image < _nbImages);
-
 	return _parent[image];
 }
 
@@ -121,7 +116,7 @@ namespace {
 
 #define WEIGHT_MAX 1000.0f
 
-Mat Scene::composePanoramaSpherical(int projSizeX, int projSizeY, double focalLength)
+Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX, int projSizeY)
 {
 	vector<Mat> warpedImages(_nbImages);
 	vector<Mat> warpedMasks(_nbImages);
@@ -137,7 +132,7 @@ Mat Scene::composePanoramaSpherical(int projSizeX, int projSizeY, double focalLe
 	cout << "  Warping images";
 
 	for (int i = 0; i < _nbImages; ++i) {
-		Mat img = getImage(i);
+		Mat img = images.getImage(getImage(i));
 		Size size = img.size();
 		Mat map(Size(projSizeX, projSizeY), CV_32FC2, Scalar(-1, -1));
 		Mat homography = getFullTransform(i).clone();
@@ -164,8 +159,8 @@ Mat Scene::composePanoramaSpherical(int projSizeX, int projSizeY, double focalLe
 				double angleY = ((double) y / projSizeY - 0.5) * PI / 2;
 
 				Mat spacePoint = Mat::zeros(Size(1, 3), CV_64F);
-				spacePoint.at<double>(0, 0) = sin(angleX) * cos(angleY) * focalLength;
-				spacePoint.at<double>(1, 0) = sin(angleY) * focalLength;
+				spacePoint.at<double>(0, 0) = sin(angleX) * cos(angleY) * _estimatedFocalLength;
+				spacePoint.at<double>(1, 0) = sin(angleY) * _estimatedFocalLength;
 				spacePoint.at<double>(2, 0) = cos(angleX) * cos(angleY);
 
 				Mat transformedPoint = invHomography * spacePoint;
@@ -376,7 +371,7 @@ Mat Scene::composePanoramaSpherical(int projSizeX, int projSizeY, double focalLe
 
 	cout << endl << "  Compositing final image" << endl;
 
-	Mat finalImage(finalImageSize, getImage(0).type());
+	Mat finalImage(finalImageSize, images.getImage(getImage(0)).type());
 	Mat compositeImage(finalImage.size(), CV_32FC3, Scalar(0, 0, 0));
 	Mat weightRgb;
 
@@ -391,7 +386,7 @@ Mat Scene::composePanoramaSpherical(int projSizeX, int projSizeY, double focalLe
 	return finalImage;
 }
 
-Mat Scene::composePanoramaPlanar()
+/*Mat Scene::composePanoramaPlanar()
 {
 	vector<Point2f> srcPoints(4);
 	vector<Point2f> dstPoints(4);
@@ -456,151 +451,4 @@ Mat Scene::composePanoramaPlanar()
 	}
 
 	return finalImage;
-}
-
-bool Scene::checkCycle(int image) const
-{
-	set<int> stack;
-	int current = image;
-
-	stack.insert(image);
-
-	while (current != -1) {
-		current = getParent(current);
-
-		if (stack.find(current) != stack.end()) {
-			return true;
-		}
-
-		stack.insert(current);
-	}
-
-	return false;
-}
-
-void Scene::findSpanningTree(list<MatchGraphEdge> &matchGraphEdges, vector<vector<bool>> &matchSpanningTreeEdges)
-{
-	vector<int> connexComponents(_nbImages);
-	bool fullyConnex = false;
-
-	matchGraphEdges.sort(compareMatchGraphEdge);
-
-	for (int i = 0; i < _nbImages; ++i) {
-		connexComponents[i] = i;
-		matchSpanningTreeEdges[i].resize(_nbImages);
-
-		for (int j = 0; j < _nbImages; ++j) {
-			matchSpanningTreeEdges[i][j] = false;
-		}
-	}
-
-	while (!matchGraphEdges.empty() && !fullyConnex) {
-		MatchGraphEdge elt(matchGraphEdges.front());
-		int objectImage = elt.objectImage;
-		int sceneImage = elt.sceneImage;
-
-		matchGraphEdges.pop_front();
-
-		if (connexComponents[objectImage] == connexComponents[sceneImage]) {
-			continue;
-		}
-
-		fullyConnex = true;
-		matchSpanningTreeEdges[objectImage][sceneImage] = true;
-		matchSpanningTreeEdges[sceneImage][objectImage] = true;
-
-		for (int i = 0; i < _nbImages; ++i) {
-			if (connexComponents[i] == connexComponents[objectImage]) {
-				connexComponents[i] = connexComponents[sceneImage];
-			}
-
-			if (connexComponents[i] != connexComponents[0]) {
-				fullyConnex = false;
-			}
-		}
-	}
-}
-
-void Scene::markNodeDepth(vector<int> &nodeDepth, vector<vector<bool>> &matchSpanningTreeEdges)
-{
-	for (int i = 0; i < _nbImages; ++i) {
-		nodeDepth[i] = numeric_limits<int>::max();
-	}
-
-	for (int i = 0; i < _nbImages; ++i) {
-		set<int> visited;
-		queue<pair<int, int>> toVisit;
-		int nbConnections = 0;
-
-		for (int j = 0; j < _nbImages; ++j) {
-			if (matchSpanningTreeEdges[i][j]) {
-				nbConnections++;
-			}
-		}
-
-		if (nbConnections != 1) {
-			continue;
-		}
-
-		toVisit.push(make_pair(i, 0));
-		
-		while (!toVisit.empty()) {
-			int current = toVisit.front().first;
-			int depth = toVisit.front().second;
-
-			nodeDepth[current] = min(nodeDepth[current], depth);
-			visited.insert(current);
-
-			for (int j = 0; j < _nbImages; ++j) {
-				if (matchSpanningTreeEdges[current][j] && visited.find(j) == visited.end()) {
-					toVisit.push(make_pair(j, depth + 1));
-				}
-			}
-
-			toVisit.pop();
-		}
-	}
-}
-
-void Scene::makeFinalSceneTree(int treeCenter, map<pair<int, int>, ImageMatchInfos> &matchInfosMap,
-							   vector<vector<bool>> &matchSpanningTreeEdges)
-{
-	set<int> visited;
-	queue<pair<int, int>> toVisit;
-
-	toVisit.push(make_pair(treeCenter, -1));
-		
-	while (!toVisit.empty()) {
-		int current = toVisit.front().first;
-		int parent = toVisit.front().second;
-
-		visited.insert(current);
-		setParent(current, parent);
-			
-		if (parent != -1) {
-			setTransform(current, matchInfosMap[make_pair(current, parent)].homography);
-		} else {
-			setTransform(current, Mat::eye(Size(3, 3), CV_64F));
-		}
-
-		for (int j = 0; j < _nbImages; ++j) {
-			if (matchSpanningTreeEdges[current][j] && visited.find(j) == visited.end()) {
-				toVisit.push(make_pair(j, current));
-			}
-		}
-
-		toVisit.pop();
-	}
-}
-
-void Scene::makeSceneGraph(list<MatchGraphEdge> &matchGraphEdges, map<pair<int, int>, ImageMatchInfos> &matchInfosMap)
-{
-	vector<vector<bool>> matchSpanningTreeEdges(_nbImages);
-	findSpanningTree(matchGraphEdges, matchSpanningTreeEdges);
-
-	vector<int> nodeDepth(_nbImages);
-	markNodeDepth(nodeDepth, matchSpanningTreeEdges);
-
-	int treeCenter = max_element(nodeDepth.begin(), nodeDepth.end()) - nodeDepth.begin();
-	makeFinalSceneTree(treeCenter, matchInfosMap, matchSpanningTreeEdges);
-}
+}*/

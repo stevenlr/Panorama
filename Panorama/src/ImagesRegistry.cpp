@@ -38,3 +38,10 @@ const ImageDescriptor &ImagesRegistry::getDescriptor(int id) const
 
 	return _descriptors[id];
 }
+
+const cv::Mat &ImagesRegistry::getImage(int id) const
+{
+	assert(id >= 0 && id < _images.size());
+
+	return _images[id];
+}

@@ -12,10 +12,10 @@
 #include <opencv2/calib3d/calib3d.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
 
-#include "ImageRegistry.h"
+#include "ImagesRegistry.h"
 #include "MatchGraph.h"
-#include "ImageMatching.h"
 #include "Calibration.h"
+#include "Scene.h"
 
 using namespace std;
 using namespace cv;
@@ -26,21 +26,18 @@ int composePanorama(int setId)
 	initModule_nonfree();
 
 	vector<string> sourceImagesNames;
-	string setName = "";
 
 	switch (setId) {
 		case 1:
 			sourceImagesNames.push_back("balcony0");
 			sourceImagesNames.push_back("balcony1");
 			sourceImagesNames.push_back("balcony2");
-			setName = "balcony";
 			break;
 		case 2:
 			sourceImagesNames.push_back("office1");
 			sourceImagesNames.push_back("office2");
 			sourceImagesNames.push_back("office4");
 			sourceImagesNames.push_back("office3");
-			setName = "office";
 			break;
 		case 3:
 			sourceImagesNames.push_back("building1");
@@ -49,12 +46,10 @@ int composePanorama(int setId)
 			sourceImagesNames.push_back("building4");
 			sourceImagesNames.push_back("building5");
 			sourceImagesNames.push_back("building6");
-			setName = "building";
 			break;
 		case 4:
 			sourceImagesNames.push_back("mountain1");
 			sourceImagesNames.push_back("mountain2");
-			setName = "mountains";
 			break;
 		case 5:
 			sourceImagesNames.push_back("cliff1");
@@ -64,7 +59,6 @@ int composePanorama(int setId)
 			sourceImagesNames.push_back("cliff5");
 			sourceImagesNames.push_back("cliff6");
 			sourceImagesNames.push_back("cliff7");
-			setName = "cliff";
 			break;
 		default:
 			return 1;
@@ -91,35 +85,28 @@ int composePanorama(int setId)
 	cout << endl;
 
 	MatchGraph graph(images);
+	vector<Scene> scenes;
 
-	list<MatchGraphEdge> matchGraphEdges;
-	map<pair<int, int>, ImageMatchInfos> matchInfosMap;
-	vector<double> focalLengths;
-
-	if (focalLengths.size() < 1) {
-		cout << "Not enough images" << endl;
-		cin.get();
-		return 1;
-	}
-
-	cout << "Computing scene graph" << endl;
-	scene.makeSceneGraph(matchGraphEdges, matchInfosMap);
+	cout << "Creating scenes" << endl;
+	graph.createScenes(scenes);
 
 	float a = 1;
 	int projSizeX = 1024 * a;
 	int projSizeY = 512 * a;
-	double focalLength = getMedianFocalLength(focalLengths);
 	
-	cout << "Compositing final image" << endl;
-	Mat finalImage = scene.composePanoramaSpherical(projSizeX, projSizeY, focalLength);
+	cout << scenes.size() << " scenes built" << endl;
 
-	cout << "Writing final image" << endl;
-	stringstream sstr;
+	for (int i = 0; i < scenes.size(); ++i) {
+		cout << "Compositing final image " << i << endl;
+		Mat finalImage = scenes[i].composePanoramaSpherical(images, projSizeX, projSizeY);
 
-	sstr << "multiband-" << setName << ".jpg";
-	imwrite(sstr.str(), finalImage);
-	namedWindow(sstr.str(), WINDOW_AUTOSIZE);
-	imshow(sstr.str(), finalImage);
+		stringstream sstr;
+
+		sstr << "output-" << i << ".jpg";
+		imwrite(sstr.str(), finalImage);
+		namedWindow(sstr.str(), WINDOW_AUTOSIZE);
+		imshow(sstr.str(), finalImage);
+	}
 
 	cout << "Done" << endl;
 
@@ -133,7 +120,7 @@ int main(int argc, char *argv[])
 		waitKey(1);
 	}*/
 
-	composePanorama(3);
+	composePanorama(1);
 
 	waitKey(0);
 }

@@ -2,47 +2,39 @@
 #define SCENE_H_
 
 #include <vector>
-#include <list>
 #include <map>
 
 #include <opencv2/core/core.hpp>
+
+#include "ImagesRegistry.h"
 
 struct MatchGraphEdge;
 struct ImageMatchInfos;
 
 class Scene {
 public:
-	Scene(int nbImages);
+	Scene();
 
-	void setImage(int i, const cv::Mat &img);
-	const cv::Mat &getImage(int i) const;
-	const cv::Mat &getImageBW(int i) const;
-
+	void setEstimatedFocalLength(double f);
+	void addImage(int id);
 	int getNbImages() const;
+	int getImage(int id) const;
 	int getParent(int image) const;
+	int getIdInScene(int image) const;
 	void setParent(int image, int parent);
 	void setTransform(int image, const cv::Mat &transform);
 	const cv::Mat &getTransform(int image) const;
 
-	cv::Mat composePanoramaPlanar();
-	cv::Mat composePanoramaSpherical(int projSizeX, int projSizeY, double focalLength);
+	//cv::Mat composePanoramaPlanar();
+	cv::Mat composePanoramaSpherical(const ImagesRegistry &images, int projSizeX, int projSizeY);
 
 	cv::Mat getFullTransform(int image) const;
-	bool checkCycle(int image) const;
-	void makeSceneGraph(std::list<MatchGraphEdge> &matchGraphEdges, std::map<std::pair<int, int>, ImageMatchInfos> &matchInfosMap);
 
 private:
-	Scene(const Scene &);
-	Scene &operator=(const Scene &);
-
-	void findSpanningTree(std::list<MatchGraphEdge> &matchGraphEdges, std::vector<std::vector<bool>> &matchSpanningTreeEdges);
-	void markNodeDepth(std::vector<int> &nodeDepth, std::vector<std::vector<bool>> &matchSpanningTreeEdges);
-	void makeFinalSceneTree(int treeCenter, std::map<std::pair<int, int>, ImageMatchInfos> &matchInfosMap,
-							std::vector<std::vector<bool>> &matchSpanningTreeEdges);
-
 	int _nbImages;
-	std::vector<cv::Mat> _images;
-	std::vector<cv::Mat> _imagesBW;
+	double _estimatedFocalLength;
+	std::map<int, int> _reverseIds;
+	std::vector<int> _images;
 	std::vector<int> _parent;
 	std::vector<cv::Mat> _transform;
 };

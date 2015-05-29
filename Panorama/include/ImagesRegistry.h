@@ -16,9 +16,11 @@ struct ImageDescriptor {
 
 class ImagesRegistry {
 public:
-	void addImage(const Mat &img);
+	void addImage(const cv::Mat &img);
 	int getNbImages() const;
 	const ImageDescriptor &getDescriptor(int id) const;
+	const cv::Mat &getImage(int id) const;
+
 private:
 	std::vector<cv::Mat> _images;
 	std::vector<ImageDescriptor> _descriptors;
