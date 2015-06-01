@@ -5,6 +5,7 @@
 #include <list>
 #include <set>
 #include <sstream>
+#include <ctime>
 
 #include <opencv2/core/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
@@ -102,7 +103,7 @@ int composePanorama(int setId)
 
 		stringstream sstr;
 
-		sstr << "output-" << i << ".jpg";
+		sstr << "output-" << sourceImagesNames[0] << ".jpg";
 		imwrite(sstr.str(), finalImage);
 		namedWindow(sstr.str(), WINDOW_AUTOSIZE);
 		imshow(sstr.str(), finalImage);
@@ -115,12 +116,12 @@ int composePanorama(int setId)
 
 int main(int argc, char *argv[])
 {
-	/*for (int i = 1; i <= 6; ++i) {
+	for (int i = 1; i <= 6; ++i) {
 		composePanorama(i);
 		waitKey(1);
-	}*/
+	}
 
-	composePanorama(1);
+	//composePanorama(1);
 
 	waitKey(0);
 }

@@ -12,6 +12,8 @@
 using namespace std;
 using namespace cv;
 
+#define CONFIDENCE_THRESHOLD 1.0
+
 ImageMatchInfos::ImageMatchInfos()
 {
 	confidence = 0;
@@ -81,7 +83,7 @@ MatchGraph::MatchGraph(const ImagesRegistry &images)
 
 				const ImageMatchInfos &matchInfos = _matchInfos[i][j];
 
-				if (matchInfos.confidence > 1) {
+				if (matchInfos.confidence > CONFIDENCE_THRESHOLD) {
 					ImageMatchInfos &matchInfos2 = _matchInfos[j][i];
 
 					matchInfos2 = matchInfos;
@@ -93,8 +95,8 @@ MatchGraph::MatchGraph(const ImagesRegistry &images)
 					edge1.objectImage = i;
 					edge1.sceneImage = j;
 					edge1.confidence = matchInfos.confidence;
-					edge2.objectImage = i;
-					edge2.sceneImage = j;
+					edge2.objectImage = j;
+					edge2.sceneImage = i;
 					edge2.confidence = matchInfos.confidence;
 
 					_matchGraphEdges.push_back(edge1);
@@ -232,8 +234,12 @@ void MatchGraph::findConnexComponents(vector<vector<bool>> &connexComponents)
 	int nbImages = _matchInfos.size();
 	vector<int> connexComponentsIds(nbImages);
 
+	for (int i = 0; i < nbImages; ++i) {
+		connexComponentsIds[i] = i;
+	}
+
 	for (const MatchGraphEdge &edge : _matchGraphEdges) {
-		if (edge.confidence < 1) {
+		if (edge.confidence < CONFIDENCE_THRESHOLD) {
 			continue;
 		}
 
@@ -425,7 +431,7 @@ void MatchGraph::createScenes(std::vector<Scene> &scenes)
 
 		makeFinalSceneTree(treeCenter, spanningTreeEdges, scene);
 
-		if (focalLengths.size() < 1) {
+		if (focalLengths.size() >= 1) {
 			scene.setEstimatedFocalLength(getMedianFocalLength(focalLengths));
 		}
 	}
