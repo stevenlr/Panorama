@@ -62,6 +62,8 @@ ImageMatchInfos &ImageMatchInfos::operator=(const ImageMatchInfos &infos)
 MatchGraph::MatchGraph(const ImagesRegistry &images)
 {
 	int nbImages = images.getNbImages();
+	int progress = 0;
+	int total = nbImages * nbImages;
 
 	_matchInfos.resize(nbImages);
 
@@ -70,10 +72,14 @@ MatchGraph::MatchGraph(const ImagesRegistry &images)
 	}
 
 	for (int i = 0; i < nbImages; ++i) {
-		for (int j = i + 1; j < nbImages; ++j) {
+		for (int j = 0; j < nbImages; ++j) {
+			progress++;
+
 			if (i == j) {
 				continue;
 			}
+
+			cout << "\rPairwise matching " << static_cast<int>((static_cast<float>(progress) / total * 100)) << "%" << flush;
 			
 			const ImageDescriptor &sceneDescriptor = images.getDescriptor(i);
 			const ImageDescriptor &objectDescriptor = images.getDescriptor(j);
@@ -84,32 +90,24 @@ MatchGraph::MatchGraph(const ImagesRegistry &images)
 				const ImageMatchInfos &matchInfos = _matchInfos[i][j];
 
 				if (matchInfos.confidence > CONFIDENCE_THRESHOLD) {
-					ImageMatchInfos &matchInfos2 = _matchInfos[j][i];
+					MatchGraphEdge edge;
 
-					matchInfos2 = matchInfos;
-					matchInfos2.homography = matchInfos2.homography.inv();
+					edge.sceneImage = i;
+					edge.objectImage = j;
+					edge.confidence = matchInfos.confidence;
 
-					MatchGraphEdge edge1;
-					MatchGraphEdge edge2;
-
-					edge1.objectImage = i;
-					edge1.sceneImage = j;
-					edge1.confidence = matchInfos.confidence;
-					edge2.objectImage = j;
-					edge2.sceneImage = i;
-					edge2.confidence = matchInfos.confidence;
-
-					_matchGraphEdges.push_back(edge1);
-					_matchGraphEdges.push_back(edge2);
+					_matchGraphEdges.push_back(edge);
 				}
 			}
 		}
 	}
+
+	cout << endl;
 }
 
 bool MatchGraph::matchImages(const ImageDescriptor &sceneDescriptor, const ImageDescriptor &objectDescriptor)
 {
-	const double confidence = 0.4;
+	const double confidence = 0.6;
 	ImageMatchInfos &matchInfos = _matchInfos[sceneDescriptor.image][objectDescriptor.image];
 	Ptr<DescriptorMatcher> descriptorMatcher = DescriptorMatcher::create("FlannBased");
 	vector<vector<DMatch>> matches;
@@ -183,12 +181,6 @@ void MatchGraph::computeHomography(const ImageDescriptor &sceneDescriptor, const
 
 	Mat homography = findHomography(points[1], points[0], CV_RANSAC, 3.0, match.inliersMask);
 
-	for (uchar mask : match.inliersMask) {
-		if (mask) {
-			match.nbInliers++;
-		}
-	}
-
 	vector<uchar>::const_iterator inliersIt;
 	vector<Point2f>::const_iterator pointsIt[2];
 
@@ -206,8 +198,14 @@ void MatchGraph::computeHomography(const ImageDescriptor &sceneDescriptor, const
 		}
 	}
 
-	homography = findHomography(points[1], points[0], CV_RANSAC, 3.0);
+	homography = findHomography(points[1], points[0], CV_RANSAC, 3.0, match.inliersMask);
 	matchesIt = match.matches.cbegin();
+
+	for (uchar mask : match.inliersMask) {
+		if (mask) {
+			match.nbInliers++;
+		}
+	}
 
 	while (matchesIt != match.matches.cend()) {
 		Point2d point = objectDescriptor.keypoints[(*matchesIt++).second].pt;
@@ -322,7 +320,14 @@ void MatchGraph::markNodeDepth(vector<int> &nodeDepth, vector<vector<bool>> &mat
 	nodeDepth.resize(nbImages);
 
 	for (int i = 0; i < nbImages; ++i) {
-		nodeDepth[i] = numeric_limits<int>::max();
+		nodeDepth[i] = -1;
+
+		for (int j = 0; j < nbImages; ++j) {
+			if (matchSpanningTreeEdges[i][j] || matchSpanningTreeEdges[j][i]) {
+				nodeDepth[i] = numeric_limits<int>::max();
+				break;
+			}
+		}
 	}
 
 	for (int i = 0; i < nbImages; ++i) {
@@ -411,11 +416,14 @@ void MatchGraph::createScenes(std::vector<Scene> &scenes)
 		for (int j = 0; j < nbImages; ++j) {
 			if (connexComponents[i][j]) {
 				scene.addImage(j);
+				cout << j << " ";
 			}
 		}
 
+		cout << endl;
+
 		for (const MatchGraphEdge &edge : _matchGraphEdges) {
-			if (connexComponents[i][edge.objectImage] && connexComponents[i][edge.sceneImage] && edge.confidence >= 1) {
+			if (connexComponents[i][edge.objectImage] && connexComponents[i][edge.sceneImage] && edge.confidence > CONFIDENCE_THRESHOLD) {
 				edges.push_back(edge);
 				findFocalLength(_matchInfos[edge.sceneImage][edge.objectImage].homography, focalLengths);
 			}
@@ -428,6 +436,8 @@ void MatchGraph::createScenes(std::vector<Scene> &scenes)
 		markNodeDepth(nodeDepth, spanningTreeEdges);
 
 		int treeCenter = max_element(nodeDepth.begin(), nodeDepth.end()) - nodeDepth.begin();
+
+		cout << treeCenter << endl;
 
 		makeFinalSceneTree(treeCenter, spanningTreeEdges, scene);
 

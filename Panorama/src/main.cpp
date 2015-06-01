@@ -6,6 +6,7 @@
 #include <set>
 #include <sstream>
 #include <ctime>
+#include <algorithm>
 
 #include <opencv2/core/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
@@ -33,6 +34,26 @@ int composePanorama(int setId)
 			sourceImagesNames.push_back("balcony0");
 			sourceImagesNames.push_back("balcony1");
 			sourceImagesNames.push_back("balcony2");
+			sourceImagesNames.push_back("office1");
+			sourceImagesNames.push_back("office2");
+			sourceImagesNames.push_back("office4");
+			sourceImagesNames.push_back("office3");
+			sourceImagesNames.push_back("mountain1");
+			sourceImagesNames.push_back("mountain2");
+			sourceImagesNames.push_back("building1");
+			sourceImagesNames.push_back("building2");
+			sourceImagesNames.push_back("building3");
+			sourceImagesNames.push_back("building4");
+			sourceImagesNames.push_back("building5");
+			sourceImagesNames.push_back("building6");
+			sourceImagesNames.push_back("cliff1");
+			sourceImagesNames.push_back("cliff2");
+			sourceImagesNames.push_back("cliff3");
+			sourceImagesNames.push_back("cliff4");
+			sourceImagesNames.push_back("cliff5");
+			sourceImagesNames.push_back("cliff6");
+			sourceImagesNames.push_back("cliff7");
+			//random_shuffle(sourceImagesNames.begin(), sourceImagesNames.end());
 			break;
 		case 2:
 			sourceImagesNames.push_back("office1");
@@ -68,12 +89,10 @@ int composePanorama(int setId)
 	int nbImages = sourceImagesNames.size();
 	ImagesRegistry images;
 
-	cout << "Reading images and extracting features";
-
 	for (int i = 0; i < nbImages; ++i) {
-		Mat img = imread("../source_images/" + sourceImagesNames[i] + ".jpg");
+		cout << "\rReading images and extracting features " << (i + 1) << "/" << nbImages << flush;
 
-		cout << ".";
+		Mat img = imread("../source_images/" + sourceImagesNames[i] + ".jpg");
 
 		if (!img.data) {
 			cerr << "Error when opening image " << sourceImagesNames[i] << endl;
@@ -103,10 +122,11 @@ int composePanorama(int setId)
 
 		stringstream sstr;
 
-		sstr << "output-" << sourceImagesNames[0] << ".jpg";
+		sstr << "output-" << sourceImagesNames[0] << "-" << i << ".jpg";
 		imwrite(sstr.str(), finalImage);
 		namedWindow(sstr.str(), WINDOW_AUTOSIZE);
 		imshow(sstr.str(), finalImage);
+		waitKey(1);
 	}
 
 	cout << "Done" << endl;
@@ -116,12 +136,12 @@ int composePanorama(int setId)
 
 int main(int argc, char *argv[])
 {
-	for (int i = 1; i <= 6; ++i) {
+	/*for (int i = 2; i <= 6; ++i) {
 		composePanorama(i);
 		waitKey(1);
-	}
+	}*/
 
-	//composePanorama(1);
+	composePanorama(1);
 
 	waitKey(0);
 }

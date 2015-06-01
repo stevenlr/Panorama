@@ -26,8 +26,7 @@ void Scene::setEstimatedFocalLength(double f)
 
 void Scene::addImage(int id)
 {
-	_reverseIds.insert(make_pair(id, _nbImages));
-	_nbImages++;
+	_reverseIds.insert(make_pair(id, _nbImages++));
 	_images.push_back(id);
 	_transform.push_back(Mat());
 	_parent.push_back(-1);
