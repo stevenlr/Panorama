@@ -123,6 +123,10 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 	vector<pair<Point2d, Point2d>> corners(_nbImages);
 	Point finalMinCorner, finalMaxCorner;
 
+	if (_nbImages < 2) {
+		return Mat();
+	}
+
 	finalMinCorner.x = numeric_limits<int>::max();
 	finalMinCorner.y = numeric_limits<int>::max();
 	finalMaxCorner.x = numeric_limits<int>::min();
@@ -191,6 +195,11 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 		finalMaxCorner.x = std::max(finalMaxCorner.x, maxCorner.x);
 		finalMaxCorner.y = std::max(finalMaxCorner.y, maxCorner.y);
 	}
+
+	finalMinCorner.x = std::max(finalMinCorner.x, 0);
+	finalMinCorner.y = std::max(finalMinCorner.y, 0);
+	finalMaxCorner.x = std::min(finalMaxCorner.x, projSizeX - 1);
+	finalMaxCorner.y = std::min(finalMaxCorner.y, projSizeY - 1);
 
 	Mat overlapIntensities(Size(_nbImages, _nbImages), CV_64F, Scalar(0));
 	Mat overlapSizes(Size(_nbImages, _nbImages), CV_32S, Scalar(0));

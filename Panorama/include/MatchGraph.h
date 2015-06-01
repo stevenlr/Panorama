@@ -3,6 +3,8 @@
 
 #include <vector>
 #include <list>
+#include <queue>
+#include <mutex>
 
 #include "ImagesRegistry.h"
 #include "Scene.h"
@@ -32,6 +34,8 @@ class MatchGraph {
 		return first.confidence > second.confidence;
 	}
 
+	typedef std::pair<const ImageDescriptor *, const ImageDescriptor *> PairwiseMatchTask;
+
 public:
 	MatchGraph(const ImagesRegistry &images);
 	void createScenes(std::vector<Scene> &scenes);
@@ -43,9 +47,14 @@ private:
 	void findSpanningTree(std::list<MatchGraphEdge> &matchGraphEdges, std::vector<std::vector<bool>> &matchSpanningTreeEdges);
 	void markNodeDepth(std::vector<int> &nodeDepth, std::vector<std::vector<bool>> &matchSpanningTreeEdges);
 	void makeFinalSceneTree(int treeCenter, std::vector<std::vector<bool>> &matchSpanningTreeEdges, Scene &scene);
+	void MatchGraph::pairwiseMatch(std::queue<PairwiseMatchTask> &tasks);
 
 	std::vector<std::vector<ImageMatchInfos>> _matchInfos;
 	std::list<MatchGraphEdge> _matchGraphEdges;
+	std::mutex _matchInfosMutex;
+	std::mutex _printMutex;
+	int _totalTasks;
+	int _progress;
 };
 
 #endif

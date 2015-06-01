@@ -53,6 +53,7 @@ int composePanorama(int setId)
 			sourceImagesNames.push_back("cliff5");
 			sourceImagesNames.push_back("cliff6");
 			sourceImagesNames.push_back("cliff7");
+			random_shuffle(sourceImagesNames.begin(), sourceImagesNames.end());
 			//random_shuffle(sourceImagesNames.begin(), sourceImagesNames.end());
 			break;
 		case 2:
@@ -119,6 +120,10 @@ int composePanorama(int setId)
 	for (int i = 0; i < scenes.size(); ++i) {
 		cout << "Compositing final image " << i << endl;
 		Mat finalImage = scenes[i].composePanoramaSpherical(images, projSizeX, projSizeY);
+
+		if (finalImage.size() == Size(0, 0)) {
+			continue;
+		}
 
 		stringstream sstr;
 
