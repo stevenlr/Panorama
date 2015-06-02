@@ -82,12 +82,12 @@ void MatchGraph::pairwiseMatch(queue<PairwiseMatchTask> &tasks)
 			ImageMatchInfos *matchInfos1 = &_matchInfos[sceneDescriptor.image][objectDescriptor.image];
 
 			if (matchInfos1->confidence > CONFIDENCE_THRESHOLD) {
+				MatchGraphEdge edge1;
+				MatchGraphEdge edge2;
+
 				ImageMatchInfos *matchInfos2 = &_matchInfos[objectDescriptor.image][sceneDescriptor.image];
 
 				new(matchInfos2) ImageMatchInfos(*matchInfos1);
-
-				MatchGraphEdge edge1;
-				MatchGraphEdge edge2;
 
 				edge1.sceneImage = sceneDescriptor.image;
 				edge1.objectImage = objectDescriptor.image;
@@ -95,7 +95,7 @@ void MatchGraph::pairwiseMatch(queue<PairwiseMatchTask> &tasks)
 
 				edge2.sceneImage = objectDescriptor.image;
 				edge2.objectImage = sceneDescriptor.image;
-				edge2.confidence = matchInfos2->confidence;
+				edge2.confidence = matchInfos1->confidence;
 				matchInfos2->homography = matchInfos2->homography.inv();
 
 				_matchGraphEdges.push_back(edge1);
@@ -118,6 +118,8 @@ MatchGraph::MatchGraph(const ImagesRegistry &images)
 	_totalTasks = nbImages * (nbImages - 1) / 2;
 	_progress = 0;
 	_matchInfos.resize(nbImages);
+
+	cout << nbThreads << " threads" << endl;
 
 	for (int i = 0; i < nbImages; ++i) {
 		_matchInfos[i].resize(nbImages);
@@ -149,10 +151,12 @@ bool MatchGraph::matchImages(const ImageDescriptor &sceneDescriptor, const Image
 {
 	const double confidence = 0.6;
 	ImageMatchInfos &matchInfos = _matchInfos[sceneDescriptor.image][objectDescriptor.image];
-	Ptr<DescriptorMatcher> descriptorMatcher = DescriptorMatcher::create("FlannBased");
+	Ptr<DescriptorMatcher> descriptorMatcher = DescriptorMatcher::create("BruteForce");
 	vector<vector<DMatch>> matches;
+	set<pair<int, int>> matchesSet;
 
 	descriptorMatcher->knnMatch(objectDescriptor.featureDescriptor, sceneDescriptor.featureDescriptor, matches, 2);
+	descriptorMatcher->clear();
 
 	for (size_t i = 0; i < matches.size(); ++i) {
 		if (matches[i].size() < 2) {
@@ -164,6 +168,7 @@ bool MatchGraph::matchImages(const ImageDescriptor &sceneDescriptor, const Image
 
 		if (m0.distance < (1 - confidence) * m1.distance) {
 			_matchInfosMutex.lock();
+			matchesSet.insert(make_pair(m0.trainIdx, m0.queryIdx));
 			matchInfos.matches.push_back(make_pair(m0.trainIdx, m0.queryIdx));
 			_matchInfosMutex.unlock();
 		}
@@ -171,6 +176,7 @@ bool MatchGraph::matchImages(const ImageDescriptor &sceneDescriptor, const Image
 
 	matches.clear();
 	descriptorMatcher->knnMatch(sceneDescriptor.featureDescriptor, objectDescriptor.featureDescriptor, matches, 2);
+	descriptorMatcher->clear();
 
 	for (size_t i = 0; i < matches.size(); ++i) {
 		if (matches[i].size() < 2) {
@@ -181,14 +187,11 @@ bool MatchGraph::matchImages(const ImageDescriptor &sceneDescriptor, const Image
 		const DMatch &m1 = matches[i][1];
 
 		if (m0.distance < (1 - confidence) * m1.distance) {
-			_matchInfosMutex.lock();
-			if (find(matchInfos.matches.begin(), matchInfos.matches.end(), make_pair(m0.queryIdx, m0.trainIdx)) != matchInfos.matches.end()) {
+			if (matchesSet.find(make_pair(m0.queryIdx, m0.trainIdx)) == matchesSet.end()) {
+				_matchInfosMutex.lock();
+				matchInfos.matches.push_back(make_pair(m0.queryIdx, m0.trainIdx));
 				_matchInfosMutex.unlock();
-				continue;
 			}
-
-			matchInfos.matches.push_back(make_pair(m0.queryIdx, m0.trainIdx));
-			_matchInfosMutex.unlock();
 		}
 	}
 
