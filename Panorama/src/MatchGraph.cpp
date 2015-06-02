@@ -83,23 +83,23 @@ void MatchGraph::pairwiseMatch(queue<PairwiseMatchTask> &tasks)
 
 			if (matchInfos1->confidence > CONFIDENCE_THRESHOLD) {
 				MatchGraphEdge edge1;
-				MatchGraphEdge edge2;
+				/*MatchGraphEdge edge2;
 
 				ImageMatchInfos *matchInfos2 = &_matchInfos[objectDescriptor.image][sceneDescriptor.image];
 
-				new(matchInfos2) ImageMatchInfos(*matchInfos1);
+				new(matchInfos2) ImageMatchInfos(*matchInfos1);*/
 
 				edge1.sceneImage = sceneDescriptor.image;
 				edge1.objectImage = objectDescriptor.image;
 				edge1.confidence = matchInfos1->confidence;
 
-				edge2.sceneImage = objectDescriptor.image;
+				/*edge2.sceneImage = objectDescriptor.image;
 				edge2.objectImage = sceneDescriptor.image;
 				edge2.confidence = matchInfos1->confidence;
-				matchInfos2->homography = matchInfos2->homography.inv();
+				matchInfos2->homography = matchInfos2->homography.inv();*/
 
 				_matchGraphEdges.push_back(edge1);
-				_matchGraphEdges.push_back(edge2);
+				//_matchGraphEdges.push_back(edge2);
 			}
 
 			_matchInfosMutex.unlock();
@@ -115,7 +115,7 @@ MatchGraph::MatchGraph(const ImagesRegistry &images)
 	vector<thread> threads(nbThreads);
 	vector<queue<PairwiseMatchTask>> taskQueues(nbThreads);
 
-	_totalTasks = nbImages * (nbImages - 1) / 2;
+	_totalTasks = nbImages * (nbImages - 1);
 	_progress = 0;
 	_matchInfos.resize(nbImages);
 
@@ -126,7 +126,7 @@ MatchGraph::MatchGraph(const ImagesRegistry &images)
 	}
 
 	for (int i = 0; i < nbImages; ++i) {
-		for (int j = i + 1; j < nbImages; ++j) {
+		for (int j = 0; j < nbImages; ++j) {
 			if (i == j) {
 				continue;
 			}
@@ -174,7 +174,7 @@ bool MatchGraph::matchImages(const ImageDescriptor &sceneDescriptor, const Image
 		}
 	}
 
-	matches.clear();
+	/*matches.clear();
 	descriptorMatcher->knnMatch(sceneDescriptor.featureDescriptor, objectDescriptor.featureDescriptor, matches, 2);
 	descriptorMatcher->clear();
 
@@ -193,7 +193,7 @@ bool MatchGraph::matchImages(const ImageDescriptor &sceneDescriptor, const Image
 				_matchInfosMutex.unlock();
 			}
 		}
-	}
+	}*/
 
 	_matchInfosMutex.lock();
 

@@ -22,69 +22,38 @@
 using namespace std;
 using namespace cv;
 
-int composePanorama(int setId)
+int composePanorama(bool shuffle)
 {
 	initModule_features2d();
 	initModule_nonfree();
 
 	vector<string> sourceImagesNames;
 
-	switch (setId) {
-		case 1:
-			sourceImagesNames.push_back("balcony0");
-			sourceImagesNames.push_back("balcony1");
-			sourceImagesNames.push_back("balcony2");
-			sourceImagesNames.push_back("office1");
-			sourceImagesNames.push_back("office2");
-			sourceImagesNames.push_back("office4");
-			sourceImagesNames.push_back("office3");
-			sourceImagesNames.push_back("mountain1");
-			sourceImagesNames.push_back("mountain2");
-			sourceImagesNames.push_back("building1");
-			sourceImagesNames.push_back("building2");
-			sourceImagesNames.push_back("building3");
-			sourceImagesNames.push_back("building4");
-			sourceImagesNames.push_back("building5");
-			sourceImagesNames.push_back("building6");
-			sourceImagesNames.push_back("cliff1");
-			sourceImagesNames.push_back("cliff2");
-			sourceImagesNames.push_back("cliff3");
-			sourceImagesNames.push_back("cliff4");
-			sourceImagesNames.push_back("cliff5");
-			sourceImagesNames.push_back("cliff6");
-			sourceImagesNames.push_back("cliff7");
-			random_shuffle(sourceImagesNames.begin(), sourceImagesNames.end());
-			//random_shuffle(sourceImagesNames.begin(), sourceImagesNames.end());
-			break;
-		case 2:
-			sourceImagesNames.push_back("office1");
-			sourceImagesNames.push_back("office2");
-			sourceImagesNames.push_back("office4");
-			sourceImagesNames.push_back("office3");
-			break;
-		case 3:
-			sourceImagesNames.push_back("building1");
-			sourceImagesNames.push_back("building2");
-			sourceImagesNames.push_back("building3");
-			sourceImagesNames.push_back("building4");
-			sourceImagesNames.push_back("building5");
-			sourceImagesNames.push_back("building6");
-			break;
-		case 4:
-			sourceImagesNames.push_back("mountain1");
-			sourceImagesNames.push_back("mountain2");
-			break;
-		case 5:
-			sourceImagesNames.push_back("cliff1");
-			sourceImagesNames.push_back("cliff2");
-			sourceImagesNames.push_back("cliff3");
-			sourceImagesNames.push_back("cliff4");
-			sourceImagesNames.push_back("cliff5");
-			sourceImagesNames.push_back("cliff6");
-			sourceImagesNames.push_back("cliff7");
-			break;
-		default:
-			return 1;
+	sourceImagesNames.push_back("balcony0");
+	sourceImagesNames.push_back("balcony1");
+	sourceImagesNames.push_back("balcony2");
+	sourceImagesNames.push_back("office1");
+	sourceImagesNames.push_back("office2");
+	sourceImagesNames.push_back("office4");
+	sourceImagesNames.push_back("office3");
+	sourceImagesNames.push_back("mountain1");
+	sourceImagesNames.push_back("mountain2");
+	sourceImagesNames.push_back("building1");
+	sourceImagesNames.push_back("building2");
+	sourceImagesNames.push_back("building3");
+	sourceImagesNames.push_back("building4");
+	sourceImagesNames.push_back("building5");
+	sourceImagesNames.push_back("building6");
+	sourceImagesNames.push_back("cliff1");
+	sourceImagesNames.push_back("cliff2");
+	sourceImagesNames.push_back("cliff3");
+	sourceImagesNames.push_back("cliff4");
+	sourceImagesNames.push_back("cliff5");
+	sourceImagesNames.push_back("cliff6");
+	sourceImagesNames.push_back("cliff7");
+
+	if (shuffle) {
+		random_shuffle(sourceImagesNames.begin(), sourceImagesNames.end());
 	}
 
 	int nbImages = sourceImagesNames.size();
@@ -141,12 +110,6 @@ int composePanorama(int setId)
 
 int main(int argc, char *argv[])
 {
-	/*for (int i = 2; i <= 6; ++i) {
-		composePanorama(i);
-		waitKey(1);
-	}*/
-
-	composePanorama(1);
-
+	composePanorama(true);
 	waitKey(0);
 }
