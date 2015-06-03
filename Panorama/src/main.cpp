@@ -108,9 +108,10 @@ using namespace cv;
 	cout << "Creating scenes" << endl;
 	graph.createScenes(scenes);
 
-	float width = 1024;
-	int projSizeX = static_cast<int>(width);
-	int projSizeY = static_cast<int>(width / 2);
+	float a = 1;
+	int projSizeX = static_cast<int>(1024 * a);
+	int projSizeY = static_cast<int>(512 * a);
+
 	
 	cout << scenes.size() << " scenes built" << endl;
 
@@ -204,6 +205,9 @@ int composePanorama2()
 	cout << scenes.size() << " scenes built" << endl;
 
 	for (size_t i = 0; i < scenes.size(); ++i) {
+		cout << "Bundle adjustment " << i << endl;
+		scenes[i].bundleAdjustment(images);
+
 		cout << "Compositing final image " << i << endl;
 		Mat finalImage = scenes[i].composePanoramaSpherical(images, projSizeX, projSizeY);
 

@@ -8,6 +8,7 @@
 
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/stitching/detail/blenders.hpp>
+#include <opencv2/calib3d/calib3d.hpp>
 
 #include "Constants.h"
 
@@ -31,6 +32,7 @@ void Scene::addImage(int id)
 	_images.push_back(id);
 	_transform.push_back(Mat());
 	_parent.push_back(-1);
+	_cameras.push_back(Camera());
 }
 
 int Scene::getNbImages() const
@@ -111,6 +113,43 @@ namespace {
 
 	float getWeight(int x, int size) {
 		return 1 - std::abs((static_cast<float>(x) / size) * 2 - 1);
+	}
+}
+
+int Scene::getRootNode() const
+{
+	int parent, node = 0;
+
+	while ((parent = getParent(node)) != -1) {
+		node = parent;
+	}
+
+	return node;
+}
+
+void Scene::bundleAdjustment(const ImagesRegistry &images)
+{
+	for (int i = 0; i < _nbImages; ++i) {
+		Size size = images.getImage(_images[i]).size();
+
+		_cameras[i].focalLength = _estimatedFocalLength;
+		_cameras[i].width = size.width;
+		_cameras[i].height = size.height;
+		_cameras[i].ppx = -size.width / 2;
+		_cameras[i].ppy = -size.height / 2;
+	}
+
+	int rootNode = getRootNode();
+	Mat_<double> K0 = _cameras[rootNode].getK();
+	SVD svd;
+
+	for (int i = 0; i < _nbImages; ++i) {
+		if (i == rootNode) {
+			continue;
+		}
+
+		svd(_cameras[i].getK() * getFullTransform(i).inv() * K0, SVD::FULL_UV);
+		Rodrigues(svd.u * svd.vt, _cameras[rootNode].rotation);
 	}
 }
 
