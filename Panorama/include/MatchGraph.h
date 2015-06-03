@@ -7,8 +7,9 @@
 #include <mutex>
 
 #include "ImagesRegistry.h"
-#include "Scene.h"
 #include "ImageSequence.h"
+
+class Scene;
 
 struct ImageMatchInfos {
 	std::vector<std::pair<int, int>> matches;
@@ -40,6 +41,7 @@ class MatchGraph {
 public:
 	MatchGraph(const ImagesRegistry &images);
 	void createScenes(std::vector<Scene> &scenes, ImageSequence &sequence);
+	const ImageMatchInfos &getImageMatchInfos(int sceneImage, int objectImage) const;
 
 private:
 	bool matchImages(const ImageDescriptor &sceneDescriptor, const ImageDescriptor &objectDescriptor);

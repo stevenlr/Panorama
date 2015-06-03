@@ -8,6 +8,7 @@ public:
 	Camera();
 
 	cv::Mat_<double> getK() const;
+	cv::Mat_<double> getH() const;
 	double getAspectRatio() const;
 
 	cv::Mat_<double> rotation;

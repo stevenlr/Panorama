@@ -1,5 +1,7 @@
 #include "Camera.h"
 
+#include <opencv2/calib3d/calib3d.hpp>
+
 using namespace std;
 using namespace cv;
 
@@ -15,8 +17,8 @@ Mat_<double> Camera::getK() const
 
 	K(0, 0) = focalLength;
 	K(1, 1) = focalLength * getAspectRatio();
-	//K(0, 2) = ppx;
-	//K(1, 2) = ppy;
+	K(0, 2) = ppx;
+	K(1, 2) = ppy;
 
 	return K;
 }
@@ -24,4 +26,13 @@ Mat_<double> Camera::getK() const
 double Camera::getAspectRatio() const
 {
 	return static_cast<double>(height) / width;
+}
+
+cv::Mat_<double> Camera::getH() const
+{
+	Mat R;
+
+	Rodrigues(rotation, R);
+
+	return getK() * R;
 }

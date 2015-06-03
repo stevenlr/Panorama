@@ -10,6 +10,7 @@
 #include <opencv2/calib3d/calib3d.hpp>
 
 #include "Calibration.h"
+#include "Scene.h"
 
 using namespace std;
 using namespace cv;
@@ -218,9 +219,11 @@ void MatchGraph::computeHomography(const ImageDescriptor &sceneDescriptor, const
 	vector<Point2f> points[2];
 	vector<pair<int, int>>::const_iterator matchesIt = match.matches.cbegin();
 
+	_matchInfosMutex.lock();
 	match.nbInliers = 0;
 	match.nbOverlaps = 0;
 	match.inliersMask.clear();
+	_matchInfosMutex.unlock();
 
 	while (matchesIt != match.matches.cend()) {
 		const pair<int, int> &m = *matchesIt++;
@@ -531,4 +534,14 @@ void MatchGraph::createScenes(std::vector<Scene> &scenes, ImageSequence &sequenc
 
 		makeFinalSceneTree(treeCenter, spanningTreeEdges, scene, sequence);
 	}
+}
+
+const ImageMatchInfos &MatchGraph::getImageMatchInfos(int sceneImage, int objectImage) const
+{
+	int nbImages = _matchInfos.size();
+
+	assert(sceneImage >= 0 && sceneImage < nbImages);
+	assert(objectImage >= 0 && objectImage < nbImages);
+
+	return _matchInfos[sceneImage][objectImage];
 }

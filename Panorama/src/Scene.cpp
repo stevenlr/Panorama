@@ -127,7 +127,58 @@ int Scene::getRootNode() const
 	return node;
 }
 
-void Scene::bundleAdjustment(const ImagesRegistry &images)
+Mat_<double> Scene::computeError(const ImagesRegistry &images, const MatchGraph &matchGraph, int nbFeaturesTotal) const
+{
+	Mat_<double> error(Size(1, nbFeaturesTotal));
+	int errorId = 0;
+
+	for (int i = 0; i < _nbImages; ++i) {
+		Mat_<double> Hscene = _cameras[i].getH().inv();
+		const vector<KeyPoint> ptsScene = images.getDescriptor(_images[i]).keypoints;
+
+		for (int j = i + 1; j < _nbImages; ++j) {
+			if (i == j) {
+				continue;
+			}
+
+			const ImageMatchInfos &match = matchGraph.getImageMatchInfos(i, j);
+			const vector<KeyPoint> ptsObject = images.getDescriptor(_images[j]).keypoints;
+			Mat_<double> Hobj =_cameras[j].getH().inv();
+			int nbMatches = match.matches.size();
+
+			for (size_t e = 0; e < nbMatches; ++e) {
+				if (match.inliersMask[e]) {
+					Point2d pt1 = ptsObject[match.matches[e].first].pt;
+					Point2d pt2 = ptsScene[match.matches[e].second].pt;
+
+					Mat_<double> m1(Size(1, 3), CV_64F);
+					Mat_<double> m2(Size(1, 3), CV_64F);
+
+					m1(0, 0) = pt1.x;
+					m1(1, 0) = pt1.y;
+					m1(2, 0) = 1;
+					m2(0, 0) = pt2.x;
+					m2(1, 0) = pt2.y;
+					m2(2, 0) = 1;
+
+					m1 = Hscene * m1;
+					m2 = Hobj * m2;
+
+					pt1.x = m1(0, 0) / m1(2, 0);
+					pt1.y = m1(1, 0) / m1(2, 0);
+					pt2.x = m2(0, 0) / m2(2, 0);
+					pt2.y = m2(1, 0) / m2(2, 0);
+
+					error(errorId++, 0) = norm(pt1 - pt2);
+				}
+			}
+		}
+	}
+
+	return error;
+}
+
+void Scene::bundleAdjustment(const ImagesRegistry &images, const MatchGraph &matchGraph)
 {
 	for (int i = 0; i < _nbImages; ++i) {
 		Size size = images.getImage(_images[i]).size();
@@ -150,6 +201,49 @@ void Scene::bundleAdjustment(const ImagesRegistry &images)
 
 		svd(_cameras[i].getK() * getFullTransform(i).inv() * K0, SVD::FULL_UV);
 		Rodrigues(svd.u * svd.vt, _cameras[rootNode].rotation);
+	}
+
+	int nbFeaturesTotal = 0;
+
+	for (int i = 0; i < _nbImages; ++i) {
+		for (int j = i + 1; j < _nbImages; ++j) {
+			if (i == j) {
+				continue;
+			}
+
+			nbFeaturesTotal += matchGraph.getImageMatchInfos(i, j).nbInliers;
+		}
+	}
+
+	Mat_<double> error = computeError(images, matchGraph, nbFeaturesTotal);
+	Mat_<double> parameterDeviation = Mat::zeros(Size(_nbImages * 4, _nbImages * 4), CV_64F);
+
+	for (int i = 0; i < _nbImages; ++i) {
+		parameterDeviation(i * 4 + 0, i * 4 + 0) = PI / 16;
+		parameterDeviation(i * 4 + 1, i * 4 + 1) = PI / 16;
+		parameterDeviation(i * 4 + 2, i * 4 + 2) = PI / 16;
+		parameterDeviation(i * 4 + 3, i * 4 + 3) = _estimatedFocalLength / 10;
+	}
+
+	double lambda = 1;
+	Mat_<double> JtJ(_nbImages * 4, _nbImages * 4);
+
+	JtJ.setTo(0);
+
+	for (int i = 0; i < _nbImages * 4; ++i) {
+		for (int j = 0; j < _nbImages * 4; ++j) {
+			double sum = 0;
+			const ImageMatchInfos &match = matchGraph.getImageMatchInfos(i / 4, j / 4);
+			int nbMatches = match.matches.size();
+
+			for (int e = 0; e < nbMatches; ++e) {
+
+			}
+
+			if (i == j) {
+				sum += lambda / parameterDeviation(i, j);
+			}
+		}
 	}
 }
 

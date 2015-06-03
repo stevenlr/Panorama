@@ -6,6 +6,7 @@
 
 #include <opencv2/core/core.hpp>
 
+#include "MatchGraph.h"
 #include "ImagesRegistry.h"
 #include "Camera.h"
 
@@ -28,12 +29,14 @@ public:
 	int getRootNode() const;
 
 	//cv::Mat composePanoramaPlanar();
-	void bundleAdjustment(const ImagesRegistry &images);
+	void bundleAdjustment(const ImagesRegistry &images, const MatchGraph &matchGraph);
 	cv::Mat composePanoramaSpherical(const ImagesRegistry &images, int projSizeX, int projSizeY);
 
 	cv::Mat getFullTransform(int image) const;
 
 private:
+	cv::Mat_<double> computeError(const ImagesRegistry &images, const MatchGraph &matchGraph, int nbFeaturesTotal) const;
+
 	int _nbImages;
 	double _estimatedFocalLength;
 	std::map<int, int> _reverseIds;
