@@ -129,53 +129,151 @@ int Scene::getRootNode() const
 
 Mat_<double> Scene::computeError(const ImagesRegistry &images, const MatchGraph &matchGraph, int nbFeaturesTotal) const
 {
-	Mat_<double> error(Size(1, nbFeaturesTotal));
+	Mat_<double> error(Size(1, nbFeaturesTotal * 2));
 	int errorId = 0;
 
 	for (int i = 0; i < _nbImages; ++i) {
-		Mat_<double> Hscene = _cameras[i].getH().inv();
+		Mat_<double> Hscene = _cameras[i].getH();
 		const vector<KeyPoint> ptsScene = images.getDescriptor(_images[i]).keypoints;
 
-		for (int j = i + 1; j < _nbImages; ++j) {
+		for (int j = 0; j < _nbImages; ++j) {
 			if (i == j) {
 				continue;
 			}
 
 			const ImageMatchInfos &match = matchGraph.getImageMatchInfos(i, j);
 			const vector<KeyPoint> ptsObject = images.getDescriptor(_images[j]).keypoints;
-			Mat_<double> Hobj =_cameras[j].getH().inv();
+			Mat_<double> Hobj = _cameras[j].getH().inv();
 			int nbMatches = match.matches.size();
 
-			for (size_t e = 0; e < nbMatches; ++e) {
+			for (int e = 0; e < nbMatches; ++e) {
 				if (match.inliersMask[e]) {
-					Point2d pt1 = ptsObject[match.matches[e].first].pt;
-					Point2d pt2 = ptsScene[match.matches[e].second].pt;
+					Point2d ptObject = ptsObject[match.matches[e].second].pt;
+					Point2d ptScene = ptsScene[match.matches[e].first].pt;
 
-					Mat_<double> m1(Size(1, 3), CV_64F);
-					Mat_<double> m2(Size(1, 3), CV_64F);
+					Mat_<double> m(Size(1, 3), CV_64F);
 
-					m1(0, 0) = pt1.x;
-					m1(1, 0) = pt1.y;
-					m1(2, 0) = 1;
-					m2(0, 0) = pt2.x;
-					m2(1, 0) = pt2.y;
-					m2(2, 0) = 1;
+					m(0, 0) = ptObject.x;
+					m(1, 0) = ptObject.y;
+					m(2, 0) = 1;
 
-					m1 = Hscene * m1;
-					m2 = Hobj * m2;
+					m = Hscene * Hobj * m;
 
-					pt1.x = m1(0, 0) / m1(2, 0);
-					pt1.y = m1(1, 0) / m1(2, 0);
-					pt2.x = m2(0, 0) / m2(2, 0);
-					pt2.y = m2(1, 0) / m2(2, 0);
+					ptObject.x = m(0, 0) / m(2, 0);
+					ptObject.y = m(1, 0) / m(2, 0);
 
-					error(errorId++, 0) = norm(pt1 - pt2);
+					Point2d distance = ptObject - ptScene;
+
+					error(errorId++, 0) = distance.x;
+					error(errorId++, 0) = distance.y;
 				}
 			}
 		}
 	}
 
+	cout << error << endl;
+
 	return error;
+}
+
+#define PARAM_ROTATION_X 0
+#define PARAM_ROTATION_Y 1
+#define PARAM_ROTATION_Z 2
+#define PARAM_FOCAL_LENGTH 3
+
+cv::Mat_<double> Scene::getErrorDerivative(int paramScene, int paramObject, bool firstAsDerivative, Point2d pointScene, Point2d pointObj) const
+{
+	Mat_<double> matPointObj = Mat::ones(Size(1, 3), CV_64F);
+	int paramType = (firstAsDerivative) ? paramScene % 4 : paramObject % 4;
+	int imgScene = paramScene / 4;
+	int imgObject = paramObject / 4;
+
+	matPointObj(0, 0) = pointObj.x;
+	matPointObj(1, 0) = pointObj.y;
+
+	if (firstAsDerivative) {
+		if (paramType == PARAM_FOCAL_LENGTH) {
+			Mat_<double> derK = Mat::zeros(Size(3, 3), CV_64F);
+
+			derK(0, 0) = 1;
+			derK(1, 1) = _cameras[imgScene].getAspectRatio();
+
+			matPointObj = derK * _cameras[imgScene].getR() * _cameras[imgObject].getH().inv() * matPointObj;
+		} else {
+			Mat_<double> derR = Mat::zeros(Size(3, 3), CV_64F);
+
+			if (paramType == PARAM_ROTATION_X) {
+				derR(1, 2) = -1;
+				derR(2, 1) = 1;
+			} else if (paramType == PARAM_ROTATION_Y) {
+				derR(2, 0) = -1;
+				derR(0, 2) = 1;
+			} else if (paramType == PARAM_ROTATION_Z) {
+				derR(0, 1) = -1;
+				derR(1, 0) = 1;
+			}
+
+			matPointObj = _cameras[imgScene].getK() * _cameras[imgScene].getR() * derR * _cameras[imgObject].getH().inv() * matPointObj;
+		}
+	} else {
+		if (paramType == PARAM_FOCAL_LENGTH) {
+			Mat_<double> derK = Mat::zeros(Size(3, 3), CV_64F);
+
+			derK(0, 0) = 1;
+			derK(1, 1) = _cameras[imgObject].getAspectRatio();
+
+			derK = -_cameras[imgObject].getK().inv() * derK * _cameras[imgObject].getK().inv();
+			matPointObj = _cameras[imgScene].getH() * _cameras[imgObject].getR().inv() * derK * matPointObj;
+		} else {
+			Mat_<double> derR = Mat::zeros(Size(3, 3), CV_64F);
+
+			if (paramType == PARAM_ROTATION_X) {
+				derR(1, 2) = -1;
+				derR(2, 1) = 1;
+			} else if (paramType == PARAM_ROTATION_Y) {
+				derR(2, 0) = -1;
+				derR(0, 2) = 1;
+			} else if (paramType == PARAM_ROTATION_Z) {
+				derR(0, 1) = -1;
+				derR(1, 0) = 1;
+			}
+
+			derR = -_cameras[imgObject].getR().inv() * _cameras[imgObject].getR() * derR * _cameras[imgObject].getR().inv();
+			matPointObj = _cameras[imgScene].getH() * derR * _cameras[imgObject].getK().inv() * matPointObj;
+		}
+	}
+
+	Mat_<double> homogeneousDer = Mat::zeros(Size(3, 2), CV_64F);
+
+	homogeneousDer(0, 0) = 1 / matPointObj(2, 0);
+	homogeneousDer(1, 1) = 1 / matPointObj(2, 0);
+	homogeneousDer(0, 2) = -matPointObj(0, 0) / (matPointObj(2, 0) * matPointObj(2, 0));
+	homogeneousDer(1, 2) = -matPointObj(1, 0) / (matPointObj(2, 0) * matPointObj(2, 0));
+
+	return homogeneousDer * matPointObj * -1;
+}
+
+Mat_<double> Scene::getSingleError(int imgScene, int imgObj, Point2d pointScene, Point2d pointObj) const
+{
+	Mat_<double> m(Size(1, 3), CV_64F);
+
+	m(0, 0) = pointObj.x;
+	m(1, 0) = pointObj.y;
+	m(2, 0) = 1;
+
+	m = _cameras[imgScene].getH() * _cameras[imgObj].getH().inv() * m;
+
+	pointObj.x = m(0, 0) / m(2, 0);
+	pointObj.y = m(1, 0) / m(2, 0);
+
+	Point2d distance = pointObj - pointScene;
+
+	Mat_<double> pointMat(Size(1, 2), CV_64F);
+
+	pointMat(0, 0) = distance.x;
+	pointMat(1, 0) = distance.y;
+
+	return pointMat;
 }
 
 void Scene::bundleAdjustment(const ImagesRegistry &images, const MatchGraph &matchGraph)
@@ -206,12 +304,12 @@ void Scene::bundleAdjustment(const ImagesRegistry &images, const MatchGraph &mat
 	int nbFeaturesTotal = 0;
 
 	for (int i = 0; i < _nbImages; ++i) {
-		for (int j = i + 1; j < _nbImages; ++j) {
+		for (int j = 0; j < _nbImages; ++j) {
 			if (i == j) {
 				continue;
 			}
 
-			nbFeaturesTotal += matchGraph.getImageMatchInfos(i, j).nbInliers;
+			nbFeaturesTotal += matchGraph.getImageMatchInfos(_images[i], _images[j]).nbInliers;
 		}
 	}
 
@@ -226,25 +324,52 @@ void Scene::bundleAdjustment(const ImagesRegistry &images, const MatchGraph &mat
 	}
 
 	double lambda = 1;
-	Mat_<double> JtJ(_nbImages * 4, _nbImages * 4);
-
-	JtJ.setTo(0);
+	Mat_<double> JtJ = Mat::zeros(Size(_nbImages * 4, _nbImages * 4), CV_64F);
+	Mat_<double> Jtr = Mat::zeros(Size(1, _nbImages * 4), CV_64F);
 
 	for (int i = 0; i < _nbImages * 4; ++i) {
+		double sumJtr = 0;
+
 		for (int j = 0; j < _nbImages * 4; ++j) {
-			double sum = 0;
-			const ImageMatchInfos &match = matchGraph.getImageMatchInfos(i / 4, j / 4);
+			double sumJtJ = 0;
+			const ImageMatchInfos &match = matchGraph.getImageMatchInfos(_images[i / 4], _images[j / 4]);
 			int nbMatches = match.matches.size();
 
 			for (int e = 0; e < nbMatches; ++e) {
+				if (match.inliersMask[e]) {
+					Point2d pointObj = images.getDescriptor(_images[j / 4]).keypoints[match.matches[e].second].pt;
+					Point2d pointScene = images.getDescriptor(_images[i / 4]).keypoints[match.matches[e].first].pt;
 
+					Mat_<double> errDerivative1 = getErrorDerivative(i, j, true, pointScene, pointObj);
+					Mat_<double> errDerivative2 = getErrorDerivative(i, j, false, pointScene, pointObj);
+					Mat_<double> termJtJ = errDerivative1.t() * errDerivative2;
+
+					cout << errDerivative2 << endl;
+					
+					sumJtJ += termJtJ(0, 0);
+
+					if (j % 4 == 0) {
+						Mat_<double> singleError = getSingleError(i / 4, j / 4, pointScene, pointObj);
+						Mat_<double> termJtr = errDerivative1.t() * singleError;
+
+						sumJtr += termJtr(0, 0);
+					}
+				}
 			}
 
 			if (i == j) {
-				sum += lambda / parameterDeviation(i, j);
+				sumJtJ += lambda / parameterDeviation(i, j);
 			}
+
+			JtJ(i, j) = sumJtJ;
 		}
+
+		Jtr(i, 0) = sumJtr;
 	}
+
+	Mat_<double> parameters = JtJ.inv() * Jtr;
+
+	//cout << JtJ << endl;
 }
 
 #define WEIGHT_MAX 1000.0f

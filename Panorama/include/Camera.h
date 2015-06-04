@@ -9,6 +9,7 @@ public:
 
 	cv::Mat_<double> getK() const;
 	cv::Mat_<double> getH() const;
+	cv::Mat_<double> getR() const;
 	double getAspectRatio() const;
 
 	cv::Mat_<double> rotation;

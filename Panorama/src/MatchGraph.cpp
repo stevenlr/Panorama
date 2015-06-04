@@ -114,6 +114,9 @@ MatchGraph::MatchGraph(const ImagesRegistry &images)
 	int nbImages = images.getNbImages();
 	int nbThreads = thread::hardware_concurrency();
 	int threadId = 0;
+
+	nbThreads = 1;
+
 	vector<thread> threads(nbThreads);
 	vector<queue<PairwiseMatchTask>> taskQueues(nbThreads);
 
@@ -241,7 +244,7 @@ void MatchGraph::computeHomography(const ImageDescriptor &sceneDescriptor, const
 		points[1].push_back(objectPoint);
 	}
 
-	vector<uchar> inliersMask;
+	vector<uchar> inliersMask(match.matches.size());
 
 	Mat homography = findHomography(points[1], points[0], CV_RANSAC, 3.0, inliersMask);
 
@@ -265,6 +268,7 @@ void MatchGraph::computeHomography(const ImageDescriptor &sceneDescriptor, const
 	vector<uchar> inliersMask2;
 
 	homography = findHomography(points[1], points[0], CV_RANSAC, 3.0, inliersMask2);
+
 	matchesIt = match.matches.cbegin();
 	inliersMaskIt = inliersMask.begin();
 

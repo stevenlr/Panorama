@@ -36,6 +36,8 @@ public:
 
 private:
 	cv::Mat_<double> computeError(const ImagesRegistry &images, const MatchGraph &matchGraph, int nbFeaturesTotal) const;
+	cv::Mat_<double> getErrorDerivative(int paramScene, int paramObject, bool firstAsDerivative, cv::Point2d pointScene, cv::Point2d pointObj) const;
+	cv::Mat_<double> getSingleError(int imgScene, int imgObj, cv::Point2d pointScene, cv::Point2d pointObj) const;
 
 	int _nbImages;
 	double _estimatedFocalLength;

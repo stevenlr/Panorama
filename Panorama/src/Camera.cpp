@@ -34,5 +34,18 @@ cv::Mat_<double> Camera::getH() const
 
 	Rodrigues(rotation, R);
 
-	return getK() * R;
+	return getK() * getR();
+}
+
+cv::Mat_<double> Camera::getR() const
+{
+	Mat R;
+
+	Rodrigues(rotation, R);
+
+	if (determinant(R) < 0) {
+		R *= -1;
+	}
+
+	return R;
 }
