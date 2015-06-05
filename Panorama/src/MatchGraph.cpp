@@ -300,6 +300,7 @@ void MatchGraph::computeHomography(const ImageDescriptor &sceneDescriptor, const
 
 		matchesIt++;
 		inliersMaskIt++;
+		matchesIt++;
 	}
 
 	_matchInfosMutex.lock();

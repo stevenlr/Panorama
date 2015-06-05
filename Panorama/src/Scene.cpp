@@ -134,7 +134,7 @@ Mat_<double> Scene::computeError(const ImagesRegistry &images, const MatchGraph 
 	int errorId = 0;
 
 	for (int i = 0; i < _nbImages; ++i) {
-		Mat_<double> Hscene = _cameras[i].getH();
+		Mat_<double> Hscene = _cameras[i].getH().inv();
 		const vector<KeyPoint> ptsScene = images.getDescriptor(_images[i]).keypoints;
 
 		for (int j = 0; j < _nbImages; ++j) {
@@ -144,7 +144,7 @@ Mat_<double> Scene::computeError(const ImagesRegistry &images, const MatchGraph 
 
 			const ImageMatchInfos &match = matchGraph.getImageMatchInfos(i, j);
 			const vector<KeyPoint> ptsObject = images.getDescriptor(_images[j]).keypoints;
-			Mat_<double> Hobj = _cameras[j].getH().inv();
+			Mat_<double> Hobj = _cameras[j].getH();
 			int nbMatches = match.matches.size();
 
 			for (int e = 0; e < nbMatches; ++e) {
@@ -154,19 +154,21 @@ Mat_<double> Scene::computeError(const ImagesRegistry &images, const MatchGraph 
 
 					Mat_<double> m(Size(1, 3), CV_64F);
 
-					m(0, 0) = ptObject.x;
-					m(1, 0) = ptObject.y;
+					m(0, 0) = ptObject.x + _cameras[j].ppx;
+					m(1, 0) = ptObject.y + _cameras[j].ppy;
 					m(2, 0) = 1;
 
 					m = Hscene * Hobj * m;
 
-					ptObject.x = m(0, 0) / m(2, 0);
-					ptObject.y = m(1, 0) / m(2, 0);
+					ptObject.x = m(0, 0) / m(2, 0) - _cameras[i].ppx;
+					ptObject.y = m(1, 0) / m(2, 0) - _cameras[i].ppy;
 
 					Point2d distance = ptObject - ptScene;
 
 					error(errorId++, 0) = distance.x;
 					error(errorId++, 0) = distance.y;
+
+					cout << norm(distance) << endl;
 				}
 			}
 		}
@@ -201,7 +203,8 @@ cv::Mat_<double> Scene::getErrorDerivative(int paramScene, int paramObject, bool
 			derK(0, 0) = 1;
 			derK(1, 1) = _cameras[imgScene].getAspectRatio();
 
-			matPointObjDer = derK * _cameras[imgScene].getR() * _cameras[imgObject].getH().inv() * matPointObjDer;
+			derK = -_cameras[imgScene].getK().inv() * derK * _cameras[imgScene].getK().inv();
+			matPointObjDer = _cameras[imgScene].getR().inv() * derK * _cameras[imgObject].getH() * matPointObjDer;
 		} else {
 			Mat_<double> derR = Mat::zeros(Size(3, 3), CV_64F);
 
@@ -246,7 +249,7 @@ cv::Mat_<double> Scene::getErrorDerivative(int paramScene, int paramObject, bool
 		}
 	}
 
-	matPointObj = _cameras[imgScene].getH() * _cameras[imgObject].getH().inv() * matPointObj;
+	matPointObj = _cameras[imgScene].getH().inv() * _cameras[imgObject].getH() * matPointObj;
 
 	Mat_<double> homogeneousDer = Mat::zeros(Size(3, 2), CV_64F);
 
@@ -262,14 +265,14 @@ Mat_<double> Scene::getSingleError(int imgScene, int imgObj, Point2d pointScene,
 {
 	Mat_<double> m(Size(1, 3), CV_64F);
 
-	m(0, 0) = pointObj.x;
-	m(1, 0) = pointObj.y;
+	m(0, 0) = pointObj.x + _cameras[imgObj].ppx;
+	m(1, 0) = pointObj.y + _cameras[imgObj].ppy;
 	m(2, 0) = 1;
 
-	m = _cameras[imgScene].getH() * _cameras[imgObj].getH().inv() * m;
+	m = _cameras[imgScene].getH().inv() * _cameras[imgObj].getH() * m;
 
-	pointObj.x = m(0, 0) / m(2, 0);
-	pointObj.y = m(1, 0) / m(2, 0);
+	pointObj.x = m(0, 0) / m(2, 0) - _cameras[imgScene].ppx;
+	pointObj.y = m(1, 0) / m(2, 0) - _cameras[imgScene].ppy;
 
 	Point2d distance = pointObj - pointScene;
 
