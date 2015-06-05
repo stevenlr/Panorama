@@ -114,9 +114,6 @@ MatchGraph::MatchGraph(const ImagesRegistry &images)
 	int nbImages = images.getNbImages();
 	int nbThreads = thread::hardware_concurrency();
 	int threadId = 0;
-
-	nbThreads = 1;
-
 	vector<thread> threads(nbThreads);
 	vector<queue<PairwiseMatchTask>> taskQueues(nbThreads);
 

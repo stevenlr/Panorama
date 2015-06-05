@@ -30,10 +30,6 @@ double Camera::getAspectRatio() const
 
 cv::Mat_<double> Camera::getH() const
 {
-	Mat R;
-
-	Rodrigues(rotation, R);
-
 	return getK() * getR();
 }
 

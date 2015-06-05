@@ -11,6 +11,7 @@
 #include <opencv2/calib3d/calib3d.hpp>
 
 #include "Constants.h"
+#include "Calibration.h"
 
 using namespace std;
 using namespace cv;
@@ -171,8 +172,6 @@ Mat_<double> Scene::computeError(const ImagesRegistry &images, const MatchGraph 
 		}
 	}
 
-	cout << error << endl;
-
 	return error;
 }
 
@@ -183,10 +182,14 @@ Mat_<double> Scene::computeError(const ImagesRegistry &images, const MatchGraph 
 
 cv::Mat_<double> Scene::getErrorDerivative(int paramScene, int paramObject, bool firstAsDerivative, Point2d pointScene, Point2d pointObj) const
 {
+	Mat_<double> matPointObjDer = Mat::ones(Size(1, 3), CV_64F);
 	Mat_<double> matPointObj = Mat::ones(Size(1, 3), CV_64F);
 	int paramType = (firstAsDerivative) ? paramScene % 4 : paramObject % 4;
 	int imgScene = paramScene / 4;
 	int imgObject = paramObject / 4;
+
+	matPointObjDer(0, 0) = pointObj.x;
+	matPointObjDer(1, 0) = pointObj.y;
 
 	matPointObj(0, 0) = pointObj.x;
 	matPointObj(1, 0) = pointObj.y;
@@ -198,7 +201,7 @@ cv::Mat_<double> Scene::getErrorDerivative(int paramScene, int paramObject, bool
 			derK(0, 0) = 1;
 			derK(1, 1) = _cameras[imgScene].getAspectRatio();
 
-			matPointObj = derK * _cameras[imgScene].getR() * _cameras[imgObject].getH().inv() * matPointObj;
+			matPointObjDer = derK * _cameras[imgScene].getR() * _cameras[imgObject].getH().inv() * matPointObjDer;
 		} else {
 			Mat_<double> derR = Mat::zeros(Size(3, 3), CV_64F);
 
@@ -213,7 +216,7 @@ cv::Mat_<double> Scene::getErrorDerivative(int paramScene, int paramObject, bool
 				derR(1, 0) = 1;
 			}
 
-			matPointObj = _cameras[imgScene].getK() * _cameras[imgScene].getR() * derR * _cameras[imgObject].getH().inv() * matPointObj;
+			matPointObjDer = _cameras[imgScene].getK() * _cameras[imgScene].getR() * derR * _cameras[imgObject].getH().inv() * matPointObjDer;
 		}
 	} else {
 		if (paramType == PARAM_FOCAL_LENGTH) {
@@ -223,7 +226,7 @@ cv::Mat_<double> Scene::getErrorDerivative(int paramScene, int paramObject, bool
 			derK(1, 1) = _cameras[imgObject].getAspectRatio();
 
 			derK = -_cameras[imgObject].getK().inv() * derK * _cameras[imgObject].getK().inv();
-			matPointObj = _cameras[imgScene].getH() * _cameras[imgObject].getR().inv() * derK * matPointObj;
+			matPointObjDer = _cameras[imgScene].getH() * _cameras[imgObject].getR().inv() * derK * matPointObjDer;
 		} else {
 			Mat_<double> derR = Mat::zeros(Size(3, 3), CV_64F);
 
@@ -239,9 +242,11 @@ cv::Mat_<double> Scene::getErrorDerivative(int paramScene, int paramObject, bool
 			}
 
 			derR = -_cameras[imgObject].getR().inv() * _cameras[imgObject].getR() * derR * _cameras[imgObject].getR().inv();
-			matPointObj = _cameras[imgScene].getH() * derR * _cameras[imgObject].getK().inv() * matPointObj;
+			matPointObjDer = _cameras[imgScene].getH() * derR * _cameras[imgObject].getK().inv() * matPointObjDer;
 		}
 	}
+
+	matPointObj = _cameras[imgScene].getH() * _cameras[imgObject].getH().inv() * matPointObj;
 
 	Mat_<double> homogeneousDer = Mat::zeros(Size(3, 2), CV_64F);
 
@@ -250,7 +255,7 @@ cv::Mat_<double> Scene::getErrorDerivative(int paramScene, int paramObject, bool
 	homogeneousDer(0, 2) = -matPointObj(0, 0) / (matPointObj(2, 0) * matPointObj(2, 0));
 	homogeneousDer(1, 2) = -matPointObj(1, 0) / (matPointObj(2, 0) * matPointObj(2, 0));
 
-	return homogeneousDer * matPointObj * -1;
+	return homogeneousDer * matPointObjDer * -1;
 }
 
 Mat_<double> Scene::getSingleError(int imgScene, int imgObj, Point2d pointScene, Point2d pointObj) const
@@ -297,8 +302,15 @@ void Scene::bundleAdjustment(const ImagesRegistry &images, const MatchGraph &mat
 			continue;
 		}
 
-		svd(_cameras[i].getK() * getFullTransform(i).inv() * K0, SVD::FULL_UV);
-		Rodrigues(svd.u * svd.vt, _cameras[rootNode].rotation);
+		svd(_cameras[i].getK().inv() * getFullTransform(i).inv() * K0, SVD::FULL_UV);
+
+		Mat R = svd.u * svd.vt;
+
+		if (determinant(R) < 0) {
+			R *= -1;
+		}
+
+		Rodrigues(R, _cameras[rootNode].rotation);
 	}
 
 	int nbFeaturesTotal = 0;
@@ -343,8 +355,6 @@ void Scene::bundleAdjustment(const ImagesRegistry &images, const MatchGraph &mat
 					Mat_<double> errDerivative1 = getErrorDerivative(i, j, true, pointScene, pointObj);
 					Mat_<double> errDerivative2 = getErrorDerivative(i, j, false, pointScene, pointObj);
 					Mat_<double> termJtJ = errDerivative1.t() * errDerivative2;
-
-					cout << errDerivative2 << endl;
 					
 					sumJtJ += termJtJ(0, 0);
 
@@ -368,8 +378,6 @@ void Scene::bundleAdjustment(const ImagesRegistry &images, const MatchGraph &mat
 	}
 
 	Mat_<double> parameters = JtJ.inv() * Jtr;
-
-	//cout << JtJ << endl;
 }
 
 #define WEIGHT_MAX 1000.0f
@@ -465,6 +473,9 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 	finalMinCorner.y = std::max(finalMinCorner.y, 0);
 	finalMaxCorner.x = std::min(finalMaxCorner.x, projSizeX - 1);
 	finalMaxCorner.y = std::min(finalMaxCorner.y, projSizeY - 1);
+
+	cout << finalMinCorner << endl;
+	cout << finalMaxCorner << endl;
 
 	Mat overlapIntensities(Size(_nbImages, _nbImages), CV_64F, Scalar(0));
 	Mat overlapSizes(Size(_nbImages, _nbImages), CV_32S, Scalar(0));

@@ -207,10 +207,6 @@ int composePanorama2()
 	for (size_t i = 0; i < scenes.size(); ++i) {
 		cout << "Bundle adjustment " << i << endl;
 		scenes[i].bundleAdjustment(images, graph);
-		cin.get();
-
-		// TODO: remove
-		continue;
 
 		cout << "Compositing final image " << i << endl;
 		Mat finalImage = scenes[i].composePanoramaSpherical(images, projSizeX, projSizeY);
