@@ -4,6 +4,7 @@
 #include <queue>
 #include <algorithm>
 #include <iostream>
+#include <ctime>
 
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/stitching/detail/blenders.hpp>
@@ -122,6 +123,8 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 	vector<Mat> warpedWeights(_nbImages);
 	vector<pair<Point2d, Point2d>> corners(_nbImages);
 	Point finalMinCorner, finalMaxCorner;
+	clock_t start;
+	float elapsedTime;
 
 	if (_nbImages < 2) {
 		return Mat();
@@ -134,6 +137,7 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 
 	cout << "  Warping images";
 
+	start = clock();
 	for (int i = 0; i < _nbImages; ++i) {
 		Mat img = images.getImage(getImage(i));
 		Size size = img.size();
@@ -196,6 +200,9 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 		finalMaxCorner.y = std::max(finalMaxCorner.y, maxCorner.y);
 	}
 
+	elapsedTime = static_cast<float>(clock() - start) / _nbImages / CLOCKS_PER_SEC;
+	cout << endl << "  Warping average: " << elapsedTime << "s" << endl;
+
 	finalMinCorner.x = std::max(finalMinCorner.x, 0);
 	finalMinCorner.y = std::max(finalMinCorner.y, 0);
 	finalMaxCorner.x = std::min(finalMaxCorner.x, projSizeX - 1);
@@ -204,7 +211,8 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 	Mat overlapIntensities(Size(_nbImages, _nbImages), CV_64F, Scalar(0));
 	Mat overlapSizes(Size(_nbImages, _nbImages), CV_32S, Scalar(0));
 
-	cout << endl << "  Compensating exposure" << endl;
+	cout << "  Compensating exposure" << endl;
+	start = clock();
 
 	for (int i = 0; i < _nbImages; ++i) {
 		for (int j = i; j < _nbImages; ++j) {
@@ -282,7 +290,12 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 		}
 	}
 
+	elapsedTime = static_cast<float>(clock() - start) / _nbImages / CLOCKS_PER_SEC;
+	cout << "  Gain compensation average: " << elapsedTime << "s" << endl;
+
 	cout << "  Building weight masks" << endl;
+
+	start = clock();
 
 	{
 		vector<float *> ptrs(_nbImages);
@@ -320,6 +333,9 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 		}
 	}
 
+	elapsedTime = static_cast<float>(clock() - start) / _nbImages / CLOCKS_PER_SEC;
+	cout << "  Weight mask building average: " << elapsedTime << "s" << endl;
+
 	const int nbBands = 5;
 	Mat mbWeight, mbRgbWeight;
 	Mat mbBand;
@@ -337,6 +353,8 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 	}
 
 	cout << "  Building frequency bands";
+
+	start = clock();
 
 	for (int i = 0; i < _nbImages; ++i) {
 		float blurDeviation = 10;
@@ -390,6 +408,9 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 	}
 
 	compositeImage.convertTo(finalImage, CV_8UC3);
+
+	elapsedTime = static_cast<float>(clock() - start) / CLOCKS_PER_SEC;
+	cout << "  Multiband blending total: " << elapsedTime << "s" << endl;
 
 	return finalImage;
 }

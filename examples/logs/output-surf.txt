@@ -1,0 +1,59 @@
+Feature extraction average: 0.150909s
+8 threads
+Pairwise matching average: 0.291117s
+Pairwise matching total (multi-threaded): 16.812s
+Creating scenes
+7 scenes built
+Compositing final image 0
+  Warping images......
+  Warping average: 0.423833s
+  Compensating exposure
+  Gain compensation average: 0.00383333s
+  Building weight masks
+  Weight mask building average: 0.000833333s
+  Building frequency bands......
+  Compositing final image
+  Multiband blending total: 0.778s
+Compositing final image 1
+  Warping images..
+  Warping average: 0.4245s
+  Compensating exposure
+  Gain compensation average: 0.004s
+  Building weight masks
+  Weight mask building average: 0.0005s
+  Building frequency bands..
+  Compositing final image
+  Multiband blending total: 0.251s
+Compositing final image 2
+Compositing final image 3
+  Warping images..
+  Warping average: 0.427s
+  Compensating exposure
+  Gain compensation average: 0.003s
+  Building weight masks
+  Weight mask building average: 0.0005s
+  Building frequency bands..
+  Compositing final image
+  Multiband blending total: 0.076s
+Compositing final image 4
+  Warping images.......
+  Warping average: 0.424286s
+  Compensating exposure
+  Gain compensation average: 0.00342857s
+  Building weight masks
+  Weight mask building average: 0.000571429s
+  Building frequency bands.......
+  Compositing final image
+  Multiband blending total: 0.534s
+Compositing final image 5
+  Warping images...
+  Warping average: 0.424s
+  Compensating exposure
+  Gain compensation average: 0.00366667s
+  Building weight masks
+  Weight mask building average: 0.000333333s
+  Building frequency bands...
+  Compositing final image
+  Multiband blending total: 0.254s
+Compositing final image 6
+Done

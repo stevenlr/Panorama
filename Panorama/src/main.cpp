@@ -7,6 +7,7 @@
 #include <sstream>
 #include <ctime>
 #include <algorithm>
+#include <ctime>
 
 #include <opencv2/core/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
@@ -59,6 +60,8 @@ int composePanorama(bool shuffle)
 	int nbImages = sourceImagesNames.size();
 	ImagesRegistry images;
 
+	float featureExtractionTimeTotal = 0;
+
 	for (int i = 0; i < nbImages; ++i) {
 		cout << "\rReading images and extracting features " << (i + 1) << "/" << nbImages << flush;
 
@@ -69,10 +72,15 @@ int composePanorama(bool shuffle)
 			return 1;
 		}
 
+		clock_t start = clock();
 		images.addImage(img);
+		featureExtractionTimeTotal += static_cast<float>(clock() - start) / CLOCKS_PER_SEC;
 	}
 
 	cout << endl;
+
+	featureExtractionTimeTotal /= nbImages;
+	cout << "Feature extraction average: " << featureExtractionTimeTotal << "s" << endl;
 
 	MatchGraph graph(images);
 	vector<Scene> scenes;

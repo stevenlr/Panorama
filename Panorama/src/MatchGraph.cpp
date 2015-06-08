@@ -5,6 +5,7 @@
 #include <queue>
 #include <iostream>
 #include <thread>
+#include <ctime>
 
 #include <opencv2/calib3d/calib3d.hpp>
 
@@ -136,6 +137,8 @@ MatchGraph::MatchGraph(const ImagesRegistry &images)
 		}
 	}
 
+	clock_t start = clock();
+
 	for (int i = 0; i < nbThreads; ++i) {
 		new(&threads[i]) thread(&MatchGraph::pairwiseMatch, std::ref(*this), taskQueues[i]);
 	}
@@ -144,7 +147,10 @@ MatchGraph::MatchGraph(const ImagesRegistry &images)
 		threads[i].join();
 	}
 
-	cout << endl;
+	float elapsedTime = static_cast<float>(clock() - start) / CLOCKS_PER_SEC;
+
+	cout << endl << "Pairwise matching average: " << (elapsedTime / _totalTasks * nbThreads) << "s" << endl;
+	cout << "Pairwise matching total (multi-threaded): " << elapsedTime << "s" << endl;
 }
 
 bool MatchGraph::matchImages(const ImageDescriptor &sceneDescriptor, const ImageDescriptor &objectDescriptor)
@@ -268,8 +274,8 @@ void MatchGraph::computeHomography(const ImageDescriptor &sceneDescriptor, const
 		pointH.at<double>(1, 0) = point.y;
 
 		pointH = homography * pointH;
-		point.x = pointH.at<double>(0, 0) / pointH.at<double>(2, 0);
-		point.y = pointH.at<double>(1, 0) / pointH.at<double>(2, 0);
+		point.x = pointH.at<double>(0, 0) / pointH.at<double>(2, 0) + sceneDescriptor.width / 2;
+		point.y = pointH.at<double>(1, 0) / pointH.at<double>(2, 0) + sceneDescriptor.height / 2;
 
 		if (point.x >= 0 && point.y >= 0 && point.x < sceneDescriptor.width && point.y < sceneDescriptor.height) {
 			nbOverlaps++;
@@ -479,11 +485,8 @@ void MatchGraph::createScenes(std::vector<Scene> &scenes)
 		for (int j = 0; j < nbImages; ++j) {
 			if (connexComponents[i][j]) {
 				scene.addImage(j);
-				cout << j << " ";
 			}
 		}
-
-		cout << endl;
 
 		for (const MatchGraphEdge &edge : _matchGraphEdges) {
 			if (connexComponents[i][edge.objectImage] && connexComponents[i][edge.sceneImage] && edge.confidence > CONFIDENCE_THRESHOLD) {
@@ -503,8 +506,6 @@ void MatchGraph::createScenes(std::vector<Scene> &scenes)
 		markNodeDepth(nodeDepth, spanningTreeEdges);
 
 		int treeCenter = max_element(nodeDepth.begin(), nodeDepth.end()) - nodeDepth.begin();
-
-		cout << treeCenter << endl;
 
 		if (nodeDepth[treeCenter] == -1) {
 			continue;
