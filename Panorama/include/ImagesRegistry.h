@@ -16,7 +16,7 @@ struct ImageDescriptor {
 
 class ImagesRegistry {
 public:
-	void addImage(const cv::Mat &img);
+	bool addImage(const std::string &filename);
 	int getNbImages() const;
 	const ImageDescriptor &getDescriptor(int id) const;
 	const cv::Mat &getImage(int id) const;

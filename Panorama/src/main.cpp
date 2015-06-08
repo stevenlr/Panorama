@@ -17,6 +17,7 @@
 #include <opencv2/imgproc/imgproc.hpp>
 
 #include "ImagesRegistry.h"
+#include "ImageSequence.h"
 #include "MatchGraph.h"
 #include "Calibration.h"
 #include "Scene.h"
@@ -31,14 +32,37 @@ int composePanorama(bool shuffle)
 
 	vector<string> sourceImagesNames;
 	string baseName = "../moving_camera_datasets/skating/input_";
-	int nbImagesDataset = 190;
+	int nbImagesDataset = 15;
 
-	for (int i = 0; i < nbImagesDataset; i += 15) {
+	for (int i = 0; i < nbImagesDataset; i += 5) {
 		stringstream sstr;
 
 		sstr << baseName << setfill('0') << setw(4) << (i + 1) << ".jpg";
 		sourceImagesNames.push_back(sstr.str());
 	}
+
+	/*sourceImagesNames.push_back("../source_images/building1.jpg");
+	sourceImagesNames.push_back("../source_images/building2.jpg");
+	sourceImagesNames.push_back("../source_images/building3.jpg");
+	sourceImagesNames.push_back("../source_images/building4.jpg");
+	sourceImagesNames.push_back("../source_images/building5.jpg");
+	sourceImagesNames.push_back("../source_images/building6.jpg");
+	sourceImagesNames.push_back("../source_images/office1.jpg");
+	sourceImagesNames.push_back("../source_images/office2.jpg");
+	sourceImagesNames.push_back("../source_images/office3.jpg");
+	sourceImagesNames.push_back("../source_images/office4.jpg");
+	sourceImagesNames.push_back("../source_images/balcony0.jpg");
+	sourceImagesNames.push_back("../source_images/balcony1.jpg");
+	sourceImagesNames.push_back("../source_images/balcony2.jpg");
+	sourceImagesNames.push_back("../source_images/cliff1.jpg");
+	sourceImagesNames.push_back("../source_images/cliff2.jpg");
+	sourceImagesNames.push_back("../source_images/cliff3.jpg");
+	sourceImagesNames.push_back("../source_images/cliff4.jpg");
+	sourceImagesNames.push_back("../source_images/cliff5.jpg");
+	sourceImagesNames.push_back("../source_images/cliff6.jpg");
+	sourceImagesNames.push_back("../source_images/cliff7.jpg");
+	sourceImagesNames.push_back("../source_images/mountain1.jpg");
+	sourceImagesNames.push_back("../source_images/mountain2.jpg");*/
 
 	if (shuffle) {
 		random_shuffle(sourceImagesNames.begin(), sourceImagesNames.end());
@@ -51,23 +75,29 @@ int composePanorama(bool shuffle)
 
 	for (int i = 0; i < nbImages; ++i) {
 		cout << "\rReading images and extracting features " << (i + 1) << "/" << nbImages << flush;
+		clock_t start = clock();
 
-		Mat img = imread(sourceImagesNames[i]);
-
-		if (!img.data) {
+		if (!images.addImage(sourceImagesNames[i])) {
 			cerr << "Error when opening image " << sourceImagesNames[i] << endl;
 			return 1;
 		}
 
-		clock_t start = clock();
-		images.addImage(img);
 		featureExtractionTimeTotal += static_cast<float>(clock() - start) / CLOCKS_PER_SEC;
 	}
 
 	cout << endl;
 
+
 	featureExtractionTimeTotal /= nbImages;
 	cout << "Feature extraction average: " << featureExtractionTimeTotal << "s" << endl;
+
+	ImageSequence sequence;
+
+	for (int i = 0; i < nbImages; ++i) {
+		sequence.addImage(i, images);
+	}
+
+	return 0;
 
 	MatchGraph graph(images);
 	vector<Scene> scenes;
@@ -75,7 +105,7 @@ int composePanorama(bool shuffle)
 	cout << "Creating scenes" << endl;
 	graph.createScenes(scenes);
 
-	float width = 2048;
+	float width = 1024;
 	int projSizeX = static_cast<int>(width);
 	int projSizeY = static_cast<int>(width / 2);
 	

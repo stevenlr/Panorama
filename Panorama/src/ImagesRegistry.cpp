@@ -3,14 +3,20 @@
 #include <iostream>
 
 #include <opencv2/imgproc/imgproc.hpp>
+#include <opencv2/highgui/highgui.hpp>
 
 using namespace std;
 using namespace cv;
 
-void ImagesRegistry::addImage(const Mat &img)
+bool ImagesRegistry::addImage(const string &filename)
 {
 	int imageId = _images.size();
 	ImageDescriptor descriptor;
+	Mat img = imread(filename);
+
+	if (!img.data) {
+		return false;
+	}
 
 	_images.push_back(img);
 
@@ -27,6 +33,8 @@ void ImagesRegistry::addImage(const Mat &img)
 	descriptorExtractor->compute(imageBW, descriptor.keypoints, descriptor.featureDescriptor);
 
 	_descriptors.push_back(descriptor);
+
+	return true;
 }
 
 int ImagesRegistry::getNbImages() const
