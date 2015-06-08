@@ -30,29 +30,15 @@ int composePanorama(bool shuffle)
 	initModule_nonfree();
 
 	vector<string> sourceImagesNames;
+	string baseName = "../moving_camera_datasets/skating/input_";
+	int nbImagesDataset = 190;
 
-	sourceImagesNames.push_back("balcony0");
-	sourceImagesNames.push_back("balcony1");
-	sourceImagesNames.push_back("balcony2");
-	sourceImagesNames.push_back("office1");
-	sourceImagesNames.push_back("office2");
-	sourceImagesNames.push_back("office4");
-	sourceImagesNames.push_back("office3");
-	sourceImagesNames.push_back("mountain1");
-	sourceImagesNames.push_back("mountain2");
-	sourceImagesNames.push_back("building1");
-	sourceImagesNames.push_back("building2");
-	sourceImagesNames.push_back("building3");
-	sourceImagesNames.push_back("building4");
-	sourceImagesNames.push_back("building5");
-	sourceImagesNames.push_back("building6");
-	sourceImagesNames.push_back("cliff1");
-	sourceImagesNames.push_back("cliff2");
-	sourceImagesNames.push_back("cliff3");
-	sourceImagesNames.push_back("cliff4");
-	sourceImagesNames.push_back("cliff5");
-	sourceImagesNames.push_back("cliff6");
-	sourceImagesNames.push_back("cliff7");
+	for (int i = 0; i < nbImagesDataset; i += 15) {
+		stringstream sstr;
+
+		sstr << baseName << setfill('0') << setw(4) << (i + 1) << ".jpg";
+		sourceImagesNames.push_back(sstr.str());
+	}
 
 	if (shuffle) {
 		random_shuffle(sourceImagesNames.begin(), sourceImagesNames.end());
@@ -66,7 +52,7 @@ int composePanorama(bool shuffle)
 	for (int i = 0; i < nbImages; ++i) {
 		cout << "\rReading images and extracting features " << (i + 1) << "/" << nbImages << flush;
 
-		Mat img = imread("../source_images/" + sourceImagesNames[i] + ".jpg");
+		Mat img = imread(sourceImagesNames[i]);
 
 		if (!img.data) {
 			cerr << "Error when opening image " << sourceImagesNames[i] << endl;
@@ -89,7 +75,7 @@ int composePanorama(bool shuffle)
 	cout << "Creating scenes" << endl;
 	graph.createScenes(scenes);
 
-	float width = 1024;
+	float width = 2048;
 	int projSizeX = static_cast<int>(width);
 	int projSizeY = static_cast<int>(width / 2);
 	
@@ -105,7 +91,7 @@ int composePanorama(bool shuffle)
 
 		stringstream sstr;
 
-		sstr << "output-" << sourceImagesNames[0] << "-" << i << ".jpg";
+		sstr << "output-" << i << ".jpg";
 		imwrite(sstr.str(), finalImage);
 		namedWindow(sstr.str(), WINDOW_AUTOSIZE);
 		imshow(sstr.str(), finalImage);
