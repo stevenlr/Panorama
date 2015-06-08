@@ -8,6 +8,7 @@
 #include <ctime>
 #include <algorithm>
 #include <ctime>
+#include <iomanip>
 
 #include <opencv2/core/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
@@ -120,4 +121,6 @@ int main(int argc, char *argv[])
 {
 	composePanorama(true);
 	waitKey(0);
+
+	return 0;
 }
