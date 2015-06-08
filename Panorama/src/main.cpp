@@ -80,13 +80,13 @@ int composePanorama(bool shuffle)
 	cout << "Creating scenes" << endl;
 	graph.createScenes(scenes);
 
-	float a = 1;
-	int projSizeX = 1024 * a;
-	int projSizeY = 512 * a;
+	float width = 1024;
+	int projSizeX = static_cast<int>(width);
+	int projSizeY = static_cast<int>(width / 2);
 	
 	cout << scenes.size() << " scenes built" << endl;
 
-	for (int i = 0; i < scenes.size(); ++i) {
+	for (size_t i = 0; i < scenes.size(); ++i) {
 		cout << "Compositing final image " << i << endl;
 		Mat finalImage = scenes[i].composePanoramaSpherical(images, projSizeX, projSizeY);
 
