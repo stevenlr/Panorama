@@ -1,6 +1,7 @@
 #include "ImageSequence.h"
 
 #include <set>
+#include <iostream>
 
 #include <opencv2/calib3d/calib3d.hpp>
 
@@ -134,6 +135,7 @@ void ImageSequence::addImage(int imageId, const ImagesRegistry &images)
 
 	if (!matchImages(images.getDescriptor(lastKeyFrame), images.getDescriptor(imageId), matchInfos)) {
 		_keyFrames.push_back(imageId);
+		cout << imageId << endl;
 		return;
 	}
 
@@ -145,20 +147,24 @@ void ImageSequence::addImage(int imageId, const ImagesRegistry &images)
 	translation(1, 2) = -images.getDescriptor(imageId).height / 2;
 
 	Mat_<double> H = translation.inv() * matchInfos.homography * translation;
+	Mat mask = Mat::ones(images.getImage(imageId).size(), CV_8U);
+	const Mat &keyImage = images.getImage(lastKeyFrame);
 
-	stringstream sstr;
-	stringstream sstr2;
+	warpPerspective(mask, mask, H, keyImage.size());
 
-	sstr << imageId << " frame";
-	sstr2 << imageId << " keyframe";
+	int nbOverlap = 0;
 
-	namedWindow(sstr.str(), WINDOW_AUTOSIZE);
-	namedWindow(sstr2.str(), WINDOW_AUTOSIZE);
+	for (int y = 0; y < mask.size().height; ++y) {
+		const uchar *ptr = mask.ptr<uchar>(y);
 
-	Mat img2;
+		for (int x = 0; x < mask.size().width; ++x) {
+			if (*ptr++) {
+				nbOverlap++;
+			}
+		}
+	}
 
-	warpPerspective(images.getImage(imageId), img2, H, images.getImage(lastKeyFrame).size());
+	float overlapRatio = static_cast<float>(nbOverlap) / (mask.size().width * mask.size().height);
 
-	imshow(sstr.str(), img2);
-	imshow(sstr2.str(), images.getImage(lastKeyFrame));
+	// reciprocal ratio computation
 }

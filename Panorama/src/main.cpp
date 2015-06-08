@@ -31,10 +31,10 @@ int composePanorama(bool shuffle)
 	initModule_nonfree();
 
 	vector<string> sourceImagesNames;
-	string baseName = "../moving_camera_datasets/skating/input_";
-	int nbImagesDataset = 15;
+	string baseName = "../moving_camera_datasets/people2/input_";
+	int nbImagesDataset = 30;
 
-	for (int i = 0; i < nbImagesDataset; i += 5) {
+	for (int i = 0; i < nbImagesDataset; i += 1) {
 		stringstream sstr;
 
 		sstr << baseName << setfill('0') << setw(4) << (i + 1) << ".jpg";
@@ -137,6 +137,7 @@ int main(int argc, char *argv[])
 {
 	composePanorama(true);
 	waitKey(0);
+	cin.get();
 
 	return 0;
 }
