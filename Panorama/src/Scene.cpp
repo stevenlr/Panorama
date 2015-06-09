@@ -8,6 +8,9 @@
 
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/stitching/detail/blenders.hpp>
+#include <opencv2/stitching/detail/warpers.hpp>
+#include <opencv2/highgui/highgui.hpp>
+#include <opencv2/calib3d/calib3d.hpp>
 
 #include "Constants.h"
 
@@ -116,13 +119,12 @@ namespace {
 
 #define WEIGHT_MAX 1000.0f
 
-Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX, int projSizeY)
+Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int scale)
 {
 	vector<Mat> warpedImages(_nbImages);
 	vector<Mat> warpedMasks(_nbImages);
 	vector<Mat> warpedWeights(_nbImages);
-	vector<pair<Point2d, Point2d>> corners(_nbImages);
-	Point finalMinCorner, finalMaxCorner;
+	vector<Point2d> corners(_nbImages);
 	clock_t start;
 	float elapsedTime;
 
@@ -130,22 +132,16 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 		return Mat();
 	}
 
-	finalMinCorner.x = numeric_limits<int>::max();
-	finalMinCorner.y = numeric_limits<int>::max();
-	finalMaxCorner.x = numeric_limits<int>::min();
-	finalMaxCorner.y = numeric_limits<int>::min();
-
 	cout << "  Warping images";
+
+	detail::SphericalWarper warper(static_cast<float>(scale));
 
 	start = clock();
 	for (int i = 0; i < _nbImages; ++i) {
 		Mat img = images.getImage(getImage(i));
 		Size size = img.size();
-		Mat map(Size(projSizeX, projSizeY), CV_32FC2, Scalar(-1, -1));
+		
 		Mat homography = getFullTransform(i).clone();
-		Point2i minCorner(numeric_limits<int>::max(), numeric_limits<int>::max());
-		Point2i maxCorner(numeric_limits<int>::min(), numeric_limits<int>::min());
-		Mat translation = Mat::eye(Size(3, 3), CV_64F);
 
 		if (homography.size() != Size(3, 3)) {
 			continue;
@@ -153,62 +149,36 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 
 		cout << ".";
 
-		translation.at<double>(0, 2) = -size.width / 2;
-		translation.at<double>(1, 2) = -size.height / 2;
-		homography = homography * translation;
+		Mat cameraParameters = Mat::eye(Size(3, 3), CV_64F);
 
-		Mat invHomography = homography.inv();
+		cameraParameters.at<double>(0, 0) = _estimatedFocalLength;
+		cameraParameters.at<double>(1, 1) = _estimatedFocalLength;
 
-		for (int x = 0; x < projSizeX; ++x) {
-			double angleX = ((double) x / projSizeX - 0.5) * PI;
+		homography = cameraParameters.inv() * homography * cameraParameters;
 
-			for (int y = 0; y < projSizeY; ++y) {
-				double angleY = ((double) y / projSizeY - 0.5) * PI / 2;
+		cameraParameters.at<double>(0, 2) = size.width / 2;
+		cameraParameters.at<double>(1, 2) = size.height / 2;
 
-				Mat spacePoint = Mat::zeros(Size(1, 3), CV_64F);
-				spacePoint.at<double>(0, 0) = sin(angleX) * cos(angleY) * _estimatedFocalLength;
-				spacePoint.at<double>(1, 0) = sin(angleY) * _estimatedFocalLength;
-				spacePoint.at<double>(2, 0) = cos(angleX) * cos(angleY);
+		Mat R, Rvect;
 
-				Mat transformedPoint = invHomography * spacePoint;
-				double projX = transformedPoint.at<double>(0, 0) / transformedPoint.at<double>(2, 0);
-				double projY = transformedPoint.at<double>(1, 0) / transformedPoint.at<double>(2, 0);
+		Rodrigues(homography, Rvect);
+		Rodrigues(Rvect, R);
 
-				if (projX >= 0 && projX < size.width && projY >= 0 && projY < size.height) {
-					minCorner.x = std::min(minCorner.x, x);
-					minCorner.y = std::min(minCorner.y, y);
-					maxCorner.x = std::max(maxCorner.x, x);
-					maxCorner.y = std::max(maxCorner.y, y);
-				}
+		R.convertTo(R, CV_32F);
+		cameraParameters.convertTo(cameraParameters, CV_32F);
 
-				map.at<Vec2f>(y, x)[0] = static_cast<float>(projX);
-				map.at<Vec2f>(y, x)[1] = static_cast<float>(projY);
-			}
-		}
+		corners[i] = warper.warp(img, cameraParameters, R, INTER_LINEAR, BORDER_CONSTANT, warpedImages[i]);
 
 		Mat maskNormal = Mat::ones(size, CV_8U);
 
-		remap(maskNormal, warpedMasks[i], map, Mat(), INTER_LINEAR, BORDER_TRANSPARENT);
-		remap(img, warpedImages[i], map, Mat(), INTER_LINEAR, BORDER_TRANSPARENT);
-		corners[i] = make_pair(minCorner, maxCorner);
-
+		warper.warp(maskNormal, cameraParameters, R, INTER_NEAREST, BORDER_CONSTANT, warpedMasks[i]);
 		distanceTransform(warpedMasks[i], warpedWeights[i], CV_DIST_L1, 3);
-
-		finalMinCorner.x = std::min(finalMinCorner.x, minCorner.x);
-		finalMinCorner.y = std::min(finalMinCorner.y, minCorner.y);
-		finalMaxCorner.x = std::max(finalMaxCorner.x, maxCorner.x);
-		finalMaxCorner.y = std::max(finalMaxCorner.y, maxCorner.y);
 	}
 
 	elapsedTime = static_cast<float>(clock() - start) / _nbImages / CLOCKS_PER_SEC;
 	cout << endl << "  Warping average: " << elapsedTime << "s" << endl;
 
-	finalMinCorner.x = std::max(finalMinCorner.x, 0);
-	finalMinCorner.y = std::max(finalMinCorner.y, 0);
-	finalMaxCorner.x = std::min(finalMaxCorner.x, projSizeX - 1);
-	finalMaxCorner.y = std::min(finalMaxCorner.y, projSizeY - 1);
-
-	Mat overlapIntensities(Size(_nbImages, _nbImages), CV_64F, Scalar(0));
+	/*Mat overlapIntensities(Size(_nbImages, _nbImages), CV_64F, Scalar(0));
 	Mat overlapSizes(Size(_nbImages, _nbImages), CV_32S, Scalar(0));
 
 	cout << "  Compensating exposure" << endl;
@@ -291,14 +261,16 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 	}
 
 	elapsedTime = static_cast<float>(clock() - start) / _nbImages / CLOCKS_PER_SEC;
-	cout << "  Gain compensation average: " << elapsedTime << "s" << endl;
+	cout << "  Gain compensation average: " << elapsedTime << "s" << endl;*/
 
 	cout << "  Building weight masks" << endl;
 
 	start = clock();
 
 	{
-		vector<float *> ptrs(_nbImages);
+		// TODO: pairwise max --> pair ROI and iterate
+
+		/*vector<float *> ptrs(_nbImages);
 
 		for (int y = finalMinCorner.y; y <= finalMaxCorner.y; ++y) {
 			for (int i = 0; i < _nbImages; ++i) {
@@ -330,84 +302,43 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 					++ptrs[i];
 				}
 			}
-		}
+		}*/
 	}
 
 	elapsedTime = static_cast<float>(clock() - start) / _nbImages / CLOCKS_PER_SEC;
 	cout << "  Weight mask building average: " << elapsedTime << "s" << endl;
 
-	const int nbBands = 5;
-	Mat mbWeight, mbRgbWeight;
-	Mat mbBand;
-	Mat mbImage, mbNextImage;
-	vector<Mat> mbSumWeight(nbBands);
-	vector<Mat> mbSumImage(nbBands);
-	Size finalImageSize(finalMaxCorner.x - finalMinCorner.x, finalMaxCorner.y - finalMinCorner.y);
-
-	for (int i = 0; i < nbBands; ++i) {
-		mbSumWeight[i].create(finalImageSize, CV_32F);
-		mbSumImage[i].create(finalImageSize, CV_32FC3);
-
-		mbSumWeight[i].setTo(0);
-		mbSumImage[i].setTo(0);
-	}
-
-	cout << "  Building frequency bands";
+	cout << "  Multiband blending" << endl;
 
 	start = clock();
 
-	for (int i = 0; i < _nbImages; ++i) {
-		float blurDeviation = 10;
+	Ptr<detail::Blender> blender = detail::Blender::createDefault(detail::Blender::MULTI_BAND);
 
-		cout << ".";
+	(reinterpret_cast<detail::MultiBandBlender *>(&blender))->setNumBands(5);
 
-		warpedImages[i].colRange(finalMinCorner.x, finalMaxCorner.x)
-						.rowRange(finalMinCorner.y, finalMaxCorner.y)
-						.copyTo(mbImage);
-		mbImage.convertTo(mbImage, CV_32FC3);
+	{
+		vector<Point> blendCorners(_nbImages);
+		vector<Size> blendSizes(_nbImages);
 
-		warpedWeights[i].colRange(finalMinCorner.x, finalMaxCorner.x)
-						.rowRange(finalMinCorner.y, finalMaxCorner.y)
-						.copyTo(mbWeight);
-			
-		warpedMasks[i] = warpedMasks[i].colRange(finalMinCorner.x, finalMaxCorner.x)
-									   .rowRange(finalMinCorner.y, finalMaxCorner.y);
-
-		for (int k = 0; k < nbBands; ++k) {
-			GaussianBlur(mbImage, mbNextImage, Size(0, 0), blurDeviation);
-			GaussianBlur(mbWeight, mbWeight, Size(0, 0), blurDeviation);
-
-			mbBand = mbImage - mbNextImage;
-
-			cvtColor(mbWeight, mbRgbWeight, CV_GRAY2RGB);
-
-			if (k != nbBands - 1) {
-				multiply(mbBand, mbRgbWeight / WEIGHT_MAX, mbBand);
-			} else {
-				multiply(mbNextImage, mbRgbWeight / WEIGHT_MAX, mbBand);
-			}
-
-			add(mbSumImage[k], mbBand, mbSumImage[k], warpedMasks[i]);
-			add(mbSumWeight[k], mbWeight, mbSumWeight[k], warpedMasks[i]);
-
-			blurDeviation /= sqrtf(2 * static_cast<float>(k) + 1);
-			mbImage = mbNextImage;
+		for (int i = 0; i < _nbImages; ++i) {
+			blendCorners[i] = corners[i];
+			blendSizes[i] = warpedImages[i].size();
 		}
+
+		blender->prepare(blendCorners, blendSizes);
 	}
 
-	cout << endl << "  Compositing final image" << endl;
+	for (int i = 0; i < _nbImages; ++i) {
+		Mat mask;
 
-	Mat finalImage(finalImageSize, images.getImage(getImage(0)).type());
-	Mat compositeImage(finalImage.size(), CV_32FC3, Scalar(0, 0, 0));
-	Mat weightRgb;
-
-	for (int k = 0; k < nbBands; ++k) {
-		cvtColor(mbSumWeight[k], weightRgb, CV_GRAY2RGB);
-		divide(mbSumImage[k], weightRgb / WEIGHT_MAX, mbSumImage[k]);
-		add(compositeImage, mbSumImage[k], compositeImage);
+		warpedWeights[i].convertTo(mask, CV_8U);
+		blender->feed(warpedImages[i], mask * 255, corners[i]);
 	}
 
-	compositeImage.convertTo(finalImage, CV_8UC3);
+	Mat finalImage;
+
+	blender->blend(finalImage, Mat());
+	finalImage.convertTo(finalImage, CV_8UC3);
 
 	elapsedTime = static_cast<float>(clock() - start) / CLOCKS_PER_SEC;
 	cout << "  Multiband blending total: " << elapsedTime << "s" << endl;

@@ -96,7 +96,7 @@ int composePanorama(bool shuffle)
 
 	for (size_t i = 0; i < scenes.size(); ++i) {
 		cout << "Compositing final image " << i << endl;
-		Mat finalImage = scenes[i].composePanoramaSpherical(images, projSizeX, projSizeY);
+		Mat finalImage = scenes[i].composePanoramaSpherical(images, 300);
 
 		if (finalImage.size() == Size(0, 0)) {
 			continue;

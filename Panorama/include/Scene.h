@@ -26,7 +26,7 @@ public:
 	const cv::Mat &getTransform(int image) const;
 
 	//cv::Mat composePanoramaPlanar();
-	cv::Mat composePanoramaSpherical(const ImagesRegistry &images, int projSizeX, int projSizeY);
+	cv::Mat composePanoramaSpherical(const ImagesRegistry &images, int scale);
 
 	cv::Mat getFullTransform(int image) const;
 
