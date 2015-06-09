@@ -31,8 +31,8 @@ int composePanorama(bool shuffle)
 	initModule_nonfree();
 
 	vector<string> sourceImagesNames;
-	string baseName = "../moving_camera_datasets/people2/input_";
-	int nbImagesDataset = 30;
+	string baseName = "../moving_camera_datasets/skating/input_";
+	int nbImagesDataset = 190;
 
 	for (int i = 0; i < nbImagesDataset; i += 1) {
 		stringstream sstr;
@@ -87,7 +87,6 @@ int composePanorama(bool shuffle)
 
 	cout << endl;
 
-
 	featureExtractionTimeTotal /= nbImages;
 	cout << "Feature extraction average: " << featureExtractionTimeTotal << "s" << endl;
 
@@ -97,9 +96,13 @@ int composePanorama(bool shuffle)
 		sequence.addImage(i, images);
 	}
 
-	return 0;
+	ImagesRegistry images2;
 
-	MatchGraph graph(images);
+	for (int i = 0; i < sequence.getNbKeyframes(); ++i) {
+		images2.addImage(sourceImagesNames[sequence.getKeyFrame(i)]);
+	}
+
+	MatchGraph graph(images2);
 	vector<Scene> scenes;
 
 	cout << "Creating scenes" << endl;
@@ -113,7 +116,7 @@ int composePanorama(bool shuffle)
 
 	for (size_t i = 0; i < scenes.size(); ++i) {
 		cout << "Compositing final image " << i << endl;
-		Mat finalImage = scenes[i].composePanoramaSpherical(images, projSizeX, projSizeY);
+		Mat finalImage = scenes[i].composePanoramaSpherical(images2, projSizeX, projSizeY);
 
 		if (finalImage.size() == Size(0, 0)) {
 			continue;
@@ -135,7 +138,7 @@ int composePanorama(bool shuffle)
 
 int main(int argc, char *argv[])
 {
-	composePanorama(true);
+	composePanorama(false);
 	waitKey(0);
 	cin.get();
 

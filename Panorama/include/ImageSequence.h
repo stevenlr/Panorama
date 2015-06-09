@@ -9,6 +9,8 @@ class ImageSequence {
 public:
 	ImageSequence() {}
 	void addImage(int i, const ImagesRegistry &images);
+	int getNbKeyframes() const;
+	int getKeyFrame(int i) const;
 
 private:
 	ImageSequence(const ImageSequence &seq);

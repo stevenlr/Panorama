@@ -155,7 +155,7 @@ MatchGraph::MatchGraph(const ImagesRegistry &images)
 
 bool MatchGraph::matchImages(const ImageDescriptor &sceneDescriptor, const ImageDescriptor &objectDescriptor)
 {
-	const double confidence = 0.6;
+	const double confidence = 0.5;
 	ImageMatchInfos &matchInfos = _matchInfos[sceneDescriptor.image][objectDescriptor.image];
 	Ptr<DescriptorMatcher> descriptorMatcher = DescriptorMatcher::create("BruteForce");
 	vector<vector<DMatch>> matches;
@@ -242,14 +242,14 @@ void MatchGraph::computeHomography(const ImageDescriptor &sceneDescriptor, const
 
 	Mat homography = findHomography(points[1], points[0], CV_RANSAC, 3.0, inliersMask);
 
-	vector<uchar>::const_iterator inliersMaskIt;
+	vector<uchar>::iterator inliersMaskIt;
 	vector<Point2f>::const_iterator pointsIt[2];
 
-	inliersMaskIt = inliersMask.cbegin();
+	inliersMaskIt = inliersMask.begin();
 	pointsIt[0] = points[0].begin();
 	pointsIt[1] = points[1].begin();
 
-	while (inliersMaskIt != inliersMask.cend()) {
+	while (inliersMaskIt != inliersMask.end()) {
 		if (*inliersMaskIt++) {
 			pointsIt[0]++;
 			pointsIt[1]++;
@@ -259,34 +259,47 @@ void MatchGraph::computeHomography(const ImageDescriptor &sceneDescriptor, const
 		}
 	}
 
-	homography = findHomography(points[1], points[0], CV_RANSAC, 3.0, inliersMask);
+	vector<uchar> inliersMask2;
+
+	homography = findHomography(points[1], points[0], CV_RANSAC, 3.0, inliersMask2);
 	matchesIt = match.matches.cbegin();
-	inliersMaskIt = inliersMask.cbegin();
+	inliersMaskIt = inliersMask.begin();
 
 	int nbOverlaps = 0;
 	int nbInliers = 0;
+	vector<uchar>::const_iterator inliersMask2It = inliersMask2.cbegin();
 
 	while (matchesIt != match.matches.cend()) {
-		Point2d point = objectDescriptor.keypoints[(*matchesIt++).second].pt;
-		Mat pointH = Mat::ones(Size(1, 3), CV_64F);
+		if (*inliersMaskIt) {
+			Point2d point = objectDescriptor.keypoints[matchesIt->second].pt;
+			Mat pointH = Mat::ones(Size(1, 3), CV_64F);
 
-		pointH.at<double>(0, 0) = point.x;
-		pointH.at<double>(1, 0) = point.y;
+			pointH.at<double>(0, 0) = point.x - objectDescriptor.width / 2;
+			pointH.at<double>(1, 0) = point.y - objectDescriptor.height / 2;
 
-		pointH = homography * pointH;
-		point.x = pointH.at<double>(0, 0) / pointH.at<double>(2, 0) + sceneDescriptor.width / 2;
-		point.y = pointH.at<double>(1, 0) / pointH.at<double>(2, 0) + sceneDescriptor.height / 2;
+			pointH = homography * pointH;
+			point.x = pointH.at<double>(0, 0) / pointH.at<double>(2, 0) + objectDescriptor.width / 2;
+			point.y = pointH.at<double>(1, 0) / pointH.at<double>(2, 0) + objectDescriptor.height / 2;
 
-		if (point.x >= 0 && point.y >= 0 && point.x < sceneDescriptor.width && point.y < sceneDescriptor.height) {
-			nbOverlaps++;
+			if (point.x >= 0 && point.y >= 0 && point.x < sceneDescriptor.width && point.y < sceneDescriptor.height) {
+				nbOverlaps++;
 
-			if (*inliersMaskIt++) {
-				nbInliers++;
+				if (*inliersMask2It) {
+					nbInliers++;
+				} else {
+					*inliersMaskIt = 0;
+				}
 			}
+
+			inliersMask2It++;
 		}
+
+		matchesIt++;
+		inliersMaskIt++;
 	}
 
 	_matchInfosMutex.lock();
+	match.inliersMask = inliersMask;
 	match.nbInliers = nbInliers;
 	match.nbOverlaps = nbOverlaps;
 	match.homography = homography;

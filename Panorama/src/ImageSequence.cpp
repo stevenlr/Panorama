@@ -3,6 +3,8 @@
 #include <set>
 #include <iostream>
 
+#include <opencv2/highgui/highgui.hpp>
+#include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/calib3d/calib3d.hpp>
 
 #include "MatchGraph.h"
@@ -13,7 +15,7 @@ using namespace cv;
 namespace {
 	bool matchImages(const ImageDescriptor &sceneDescriptor, const ImageDescriptor &objectDescriptor, ImageMatchInfos &matchInfos)
 	{
-		const double confidence = 0.6;
+		const double confidence = 0.5;
 		Ptr<DescriptorMatcher> descriptorMatcher = DescriptorMatcher::create("BruteForce");
 		vector<vector<DMatch>> matches;
 		set<pair<int, int>> matchesSet;
@@ -68,9 +70,7 @@ namespace {
 		}
 
 		vector<uchar> inliersMask;
-
 		Mat homography = findHomography(points[1], points[0], CV_RANSAC, 3.0, inliersMask);
-
 		vector<uchar>::const_iterator inliersMaskIt;
 		vector<Point2f>::const_iterator pointsIt[2];
 
@@ -88,31 +88,40 @@ namespace {
 			}
 		}
 
-		homography = findHomography(points[1], points[0], CV_RANSAC, 3.0, inliersMask);
+		vector<uchar> inliersMask2;
+
+		homography = findHomography(points[1], points[0], CV_RANSAC, 3.0, inliersMask2);
 		matchesIt = match.matches.cbegin();
 		inliersMaskIt = inliersMask.cbegin();
 
 		int nbOverlaps = 0;
 		int nbInliers = 0;
+		vector<uchar>::const_iterator inliersMask2It = inliersMask2.cbegin();
 
 		while (matchesIt != match.matches.cend()) {
-			Point2d point = objectDescriptor.keypoints[(*matchesIt++).second].pt;
-			Mat pointH = Mat::ones(Size(1, 3), CV_64F);
+			if (*inliersMaskIt++) {
+				Point2d point = objectDescriptor.keypoints[matchesIt->second].pt;
+				Mat pointH = Mat::ones(Size(1, 3), CV_64F);
 
-			pointH.at<double>(0, 0) = point.x;
-			pointH.at<double>(1, 0) = point.y;
+				pointH.at<double>(0, 0) = point.x - objectDescriptor.width / 2;
+				pointH.at<double>(1, 0) = point.y - objectDescriptor.height / 2;
 
-			pointH = homography * pointH;
-			point.x = pointH.at<double>(0, 0) / pointH.at<double>(2, 0) + sceneDescriptor.width / 2;
-			point.y = pointH.at<double>(1, 0) / pointH.at<double>(2, 0) + sceneDescriptor.height / 2;
+				pointH = homography * pointH;
+				point.x = pointH.at<double>(0, 0) / pointH.at<double>(2, 0) + objectDescriptor.width / 2;
+				point.y = pointH.at<double>(1, 0) / pointH.at<double>(2, 0) + objectDescriptor.height / 2;
 
-			if (point.x >= 0 && point.y >= 0 && point.x < sceneDescriptor.width && point.y < sceneDescriptor.height) {
-				nbOverlaps++;
+				if (point.x >= 0 && point.y >= 0 && point.x < sceneDescriptor.width && point.y < sceneDescriptor.height) {
+					nbOverlaps++;
 
-				if (*inliersMaskIt++) {
-					nbInliers++;
+					if (*inliersMask2It) {
+						nbInliers++;
+					}
 				}
+
+				inliersMask2It++;
 			}
+
+			matchesIt++;
 		}
 
 		match.nbInliers = nbInliers;
@@ -121,8 +130,7 @@ namespace {
 		match.confidence = match.nbInliers / (8.0 + 0.3 * match.nbOverlaps);
 	}
 }
-#include <opencv2/highgui/highgui.hpp>
-#include <opencv2/imgproc/imgproc.hpp>
+
 void ImageSequence::addImage(int imageId, const ImagesRegistry &images)
 {
 	if (_keyFrames.empty()) {
@@ -135,7 +143,6 @@ void ImageSequence::addImage(int imageId, const ImagesRegistry &images)
 
 	if (!matchImages(images.getDescriptor(lastKeyFrame), images.getDescriptor(imageId), matchInfos)) {
 		_keyFrames.push_back(imageId);
-		cout << imageId << endl;
 		return;
 	}
 
@@ -166,5 +173,40 @@ void ImageSequence::addImage(int imageId, const ImagesRegistry &images)
 
 	float overlapRatio = static_cast<float>(nbOverlap) / (mask.size().width * mask.size().height);
 
-	// reciprocal ratio computation
+	mask = Mat::ones(images.getImage(lastKeyFrame).size(), CV_8U);
+	const Mat &image = images.getImage(imageId);
+
+	translation(0, 2) = -images.getDescriptor(lastKeyFrame).width / 2;
+	translation(1, 2) = -images.getDescriptor(lastKeyFrame).height / 2;
+
+	H = translation.inv() * matchInfos.homography.inv() * translation;
+	warpPerspective(mask, mask, H, image.size());
+
+	nbOverlap = 0;
+
+	for (int y = 0; y < mask.size().height; ++y) {
+		const uchar *ptr = mask.ptr<uchar>(y);
+
+		for (int x = 0; x < mask.size().width; ++x) {
+			if (*ptr++) {
+				nbOverlap++;
+			}
+		}
+	}
+
+	float overlapRatio2 = static_cast<float>(nbOverlap) / (mask.size().width * mask.size().height);
+
+	if (std::min(overlapRatio, overlapRatio2) < 0.6) {
+		_keyFrames.push_back(imageId);
+	}
+}
+
+int ImageSequence::getNbKeyframes() const
+{
+	return _keyFrames.size();
+}
+
+int ImageSequence::getKeyFrame(int i) const
+{
+	return _keyFrames[i];
 }
