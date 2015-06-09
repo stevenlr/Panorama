@@ -219,11 +219,9 @@ void MatchGraph::computeHomography(const ImageDescriptor &sceneDescriptor, const
 	vector<Point2f> points[2];
 	vector<pair<int, int>>::const_iterator matchesIt = match.matches.cbegin();
 
-	_matchInfosMutex.lock();
 	match.nbInliers = 0;
 	match.nbOverlaps = 0;
 	match.inliersMask.clear();
-	_matchInfosMutex.unlock();
 
 	while (matchesIt != match.matches.cend()) {
 		const pair<int, int> &m = *matchesIt++;
@@ -241,7 +239,7 @@ void MatchGraph::computeHomography(const ImageDescriptor &sceneDescriptor, const
 		points[1].push_back(objectPoint);
 	}
 
-	vector<uchar> inliersMask(match.matches.size());
+	vector<uchar> inliersMask;
 
 	Mat homography = findHomography(points[1], points[0], CV_RANSAC, 3.0, inliersMask);
 
@@ -300,7 +298,6 @@ void MatchGraph::computeHomography(const ImageDescriptor &sceneDescriptor, const
 
 		matchesIt++;
 		inliersMaskIt++;
-		matchesIt++;
 	}
 
 	_matchInfosMutex.lock();
