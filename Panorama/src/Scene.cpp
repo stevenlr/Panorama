@@ -13,6 +13,7 @@
 #include <opencv2/calib3d/calib3d.hpp>
 
 #include "Constants.h"
+#include "Calibration.h"
 
 using namespace std;
 using namespace cv;
@@ -267,42 +268,50 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int scale)
 
 	start = clock();
 
-	{
-		// TODO: pairwise max --> pair ROI and iterate
+	for (int i = 0; i < _nbImages; ++i) {
+		Size sizeI = warpedWeights[i].size();
 
-		/*vector<float *> ptrs(_nbImages);
+		for (int j = i + 1; j < _nbImages; ++j) {
+			Size sizeJ = warpedWeights[j].size();
 
-		for (int y = finalMinCorner.y; y <= finalMaxCorner.y; ++y) {
-			for (int i = 0; i < _nbImages; ++i) {
-				ptrs[i] = warpedWeights[i].ptr<float>(y) + finalMinCorner.x;
+			if (corners[i].x + sizeI.width <= corners[j].x
+				|| corners[j].x + sizeJ.width <= corners[i].x
+				|| corners[i].y + sizeI.height <= corners[j].y
+				|| corners[j].y + sizeJ.height <= corners[i].y) {
+				continue;
 			}
 
-			for (int x = finalMinCorner.x; x <= finalMaxCorner.x; ++x) {
-				float maxWeight = 0;
-				int maxWeightImage = -1;
+			Point2d corner1;
 
-				for (int i = 0; i < _nbImages; ++i) {
-					float weight = *ptrs[i];
+			corner1.x = std::max(corners[i].x, corners[j].x);
+			corner1.y = std::max(corners[i].y, corners[j].y);
 
-					if (weight > maxWeight) {
-						maxWeight = weight;
+			Point2d corner2;
 
-						if (maxWeightImage != -1) {
-							*ptrs[maxWeightImage] = 0;
-						}
+			corner2.x = std::min(corners[i].x + sizeI.width, corners[j].x + sizeJ.width);
+			corner2.y = std::min(corners[i].y + sizeI.height, corners[j].y + sizeJ.height);
 
-						*ptrs[i] = WEIGHT_MAX;
-						maxWeightImage = i;
+			Size size = corner2 - corner1;
+
+			Mat roiI(warpedWeights[i], Rect(corner1 - corners[i], size));
+			Mat roiJ(warpedWeights[j], Rect(corner1 - corners[j], size));
+
+			for (int y = 0; y < size.height; ++y) {
+				float *ptrI = roiI.ptr<float>(y);
+				float *ptrJ = roiJ.ptr<float>(y);
+
+				for (int x = 0; x < size.width; ++x) {
+					if (*ptrI > *ptrJ) {
+						*ptrJ = 0;
 					} else {
-						*ptrs[i] = 0;
+						*ptrI = 0;
 					}
-				}
 
-				for (int i = 0; i < _nbImages; ++i) {
-					++ptrs[i];
+					++ptrI;
+					++ptrJ;
 				}
 			}
-		}*/
+		}
 	}
 
 	elapsedTime = static_cast<float>(clock() - start) / _nbImages / CLOCKS_PER_SEC;
