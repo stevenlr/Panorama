@@ -8,6 +8,7 @@
 
 #include "ImagesRegistry.h"
 #include "Scene.h"
+#include "ImageSequence.h"
 
 struct ImageMatchInfos {
 	std::vector<std::pair<int, int>> matches;
@@ -38,7 +39,7 @@ class MatchGraph {
 
 public:
 	MatchGraph(const ImagesRegistry &images);
-	void createScenes(std::vector<Scene> &scenes);
+	void createScenes(std::vector<Scene> &scenes, ImageSequence &sequence);
 
 private:
 	bool matchImages(const ImageDescriptor &sceneDescriptor, const ImageDescriptor &objectDescriptor);
@@ -46,8 +47,8 @@ private:
 	void findConnexComponents(std::vector<std::vector<bool>> &connexComponents);
 	void findSpanningTree(std::list<MatchGraphEdge> &matchGraphEdges, std::vector<std::vector<bool>> &matchSpanningTreeEdges);
 	void markNodeDepth(std::vector<int> &nodeDepth, std::vector<std::vector<bool>> &matchSpanningTreeEdges);
-	void makeFinalSceneTree(int treeCenter, std::vector<std::vector<bool>> &matchSpanningTreeEdges, Scene &scene);
-	void MatchGraph::pairwiseMatch(std::queue<PairwiseMatchTask> &tasks);
+	void makeFinalSceneTree(int treeCenter, std::vector<std::vector<bool>> &matchSpanningTreeEdges, Scene &scene, ImageSequence &sequence);
+	void pairwiseMatch(std::queue<PairwiseMatchTask> &tasks);
 
 	std::vector<std::vector<ImageMatchInfos>> _matchInfos;
 	std::list<MatchGraphEdge> _matchGraphEdges;

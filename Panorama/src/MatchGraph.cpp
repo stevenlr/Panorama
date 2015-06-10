@@ -447,7 +447,7 @@ void MatchGraph::markNodeDepth(vector<int> &nodeDepth, vector<vector<bool>> &mat
 	}
 }
 
-void MatchGraph::makeFinalSceneTree(int treeCenter, vector<vector<bool>> &matchSpanningTreeEdges, Scene &scene)
+void MatchGraph::makeFinalSceneTree(int treeCenter, vector<vector<bool>> &matchSpanningTreeEdges, Scene &scene, ImageSequence &sequence)
 {
 	set<int> visited;
 	queue<pair<int, int>> toVisit;
@@ -458,14 +458,16 @@ void MatchGraph::makeFinalSceneTree(int treeCenter, vector<vector<bool>> &matchS
 	while (!toVisit.empty()) {
 		int current = toVisit.front().first;
 		int parent = toVisit.front().second;
+		int img = scene.getIdInScene(sequence.getKeyFrame(current));
 
 		visited.insert(current);
-		scene.setParent(scene.getIdInScene(current), scene.getIdInScene(parent));
 			
 		if (parent != -1) {
-			scene.setTransform(scene.getIdInScene(current), _matchInfos[parent][current].homography);
+			scene.setParent(img, scene.getIdInScene(sequence.getKeyFrame(parent)));
+			scene.setTransform(img, _matchInfos[parent][current].homography);
 		} else {
-			scene.setTransform(scene.getIdInScene(current), Mat::eye(Size(3, 3), CV_64F));
+			scene.setParent(img, -1);
+			scene.setTransform(img, Mat::eye(Size(3, 3), CV_64F));
 		}
 
 		for (int j = 0; j < nbImages; ++j) {
@@ -478,7 +480,7 @@ void MatchGraph::makeFinalSceneTree(int treeCenter, vector<vector<bool>> &matchS
 	}
 }
 
-void MatchGraph::createScenes(std::vector<Scene> &scenes)
+void MatchGraph::createScenes(std::vector<Scene> &scenes, ImageSequence &sequence)
 {
 	vector<vector<bool>> connexComponents;
 
@@ -497,7 +499,7 @@ void MatchGraph::createScenes(std::vector<Scene> &scenes)
 
 		for (int j = 0; j < nbImages; ++j) {
 			if (connexComponents[i][j]) {
-				scene.addImage(j);
+				scene.addImage(sequence.getKeyFrame(j));
 			}
 		}
 
@@ -521,9 +523,12 @@ void MatchGraph::createScenes(std::vector<Scene> &scenes)
 		int treeCenter = max_element(nodeDepth.begin(), nodeDepth.end()) - nodeDepth.begin();
 
 		if (nodeDepth[treeCenter] == -1) {
+			int img = sequence.getKeyFrame(treeCenter);
+			scene.setParent(img, -1);
+			scene.setTransform(img, Mat::eye(Size(3, 3), CV_64F));
 			continue;
 		}
 
-		makeFinalSceneTree(treeCenter, spanningTreeEdges, scene);
+		makeFinalSceneTree(treeCenter, spanningTreeEdges, scene, sequence);
 	}
 }

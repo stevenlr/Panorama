@@ -8,6 +8,7 @@
 #include <opencv2/calib3d/calib3d.hpp>
 
 #include "MatchGraph.h"
+#include "Calibration.h"
 
 using namespace std;
 using namespace cv;
@@ -133,8 +134,11 @@ namespace {
 
 void ImageSequence::addImage(int imageId, const ImagesRegistry &images)
 {
+	_nbFrames++;
+
 	if (_keyFrames.empty()) {
 		_keyFrames.push_back(imageId);
+		_homographies.push_back(Mat::eye(Size(3, 3), CV_64F));
 		return;
 	}
 
@@ -143,6 +147,7 @@ void ImageSequence::addImage(int imageId, const ImagesRegistry &images)
 
 	if (!matchImages(images.getDescriptor(lastKeyFrame), images.getDescriptor(imageId), matchInfos)) {
 		_keyFrames.push_back(imageId);
+		_homographies.push_back(Mat::eye(Size(3, 3), CV_64F));
 		return;
 	}
 
@@ -198,7 +203,12 @@ void ImageSequence::addImage(int imageId, const ImagesRegistry &images)
 
 	if (std::min(overlapRatio, overlapRatio2) < 0.6) {
 		_keyFrames.push_back(imageId);
+		_homographies.push_back(Mat::eye(Size(3, 3), CV_64F));
+	} else {
+		_homographies.push_back(matchInfos.homography);
 	}
+
+	findFocalLength(matchInfos.homography, _focalLengths);
 }
 
 int ImageSequence::getNbKeyframes() const
@@ -209,4 +219,30 @@ int ImageSequence::getNbKeyframes() const
 int ImageSequence::getKeyFrame(int i) const
 {
 	return _keyFrames[i];
+}
+
+double ImageSequence::estimateFocalLength()
+{
+	assert(_focalLengths.size() != 0);
+	return getMedianFocalLength(_focalLengths);
+}
+
+void ImageSequence::addIntermediateFramesToScene(Scene &scene)
+{
+	int numKeyFrame = 0;
+
+	for (int numFrame = 0; numFrame < _nbFrames; ++numFrame) {
+		if (numKeyFrame < _keyFrames.size() - 1) {
+			if (_keyFrames[numKeyFrame + 1] == numFrame) {
+				numKeyFrame++;
+				continue;
+			}
+		}
+
+		if (_keyFrames[numKeyFrame] != numFrame) {
+			scene.addImage(numFrame);
+			scene.setParent(scene.getIdInScene(numFrame), _keyFrames[numKeyFrame]);
+			scene.setTransform(scene.getIdInScene(numFrame), _homographies[numFrame]);
+		}
+	}
 }
