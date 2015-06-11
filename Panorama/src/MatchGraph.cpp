@@ -11,6 +11,7 @@
 
 #include "Calibration.h"
 #include "Scene.h"
+#include "ImageSequence.h"
 
 using namespace std;
 using namespace cv;

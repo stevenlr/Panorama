@@ -7,8 +7,8 @@
 #include <mutex>
 
 #include "ImagesRegistry.h"
-#include "ImageSequence.h"
 
+class ImageSequence;
 class Scene;
 
 struct ImageMatchInfos {
