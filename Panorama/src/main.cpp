@@ -143,8 +143,8 @@ int composePanorama2()
 	initModule_nonfree();
 
 	vector<string> sourceImagesNames;
-	string baseName = "../moving_camera_datasets/people1/input_";
-	int nbImagesDataset = 41;
+	string baseName = "../moving_camera_datasets/people2/input_";
+	int nbImagesDataset = 30;
 
 	for (int i = 0; i < nbImagesDataset; i += 1) {
 		stringstream sstr;
@@ -178,8 +178,11 @@ int composePanorama2()
 	ImageSequence sequence;
 
 	for (int i = 0; i < nbImages; ++i) {
+		cout << "\rSequencing images " << (i + 1) << "/" << nbImages << flush;
 		sequence.addImage(i, images);
 	}
+
+	cout << endl;
 
 	ImagesRegistry images2;
 
@@ -198,7 +201,7 @@ int composePanorama2()
 	sequence.addIntermediateFramesToScene(scenes[0]);
 	scenes[0].setEstimatedFocalLength(sequence.estimateFocalLength());
 
-	float width = 1500;
+	float width = 2048;
 	int projSizeX = static_cast<int>(width);
 	int projSizeY = static_cast<int>(width / 2);
 

@@ -565,7 +565,7 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 	elapsedTime = static_cast<float>(clock() - start) / _nbImages / CLOCKS_PER_SEC;
 	cout << "  Gain compensation average: " << elapsedTime << "s" << endl;
 
-	cout << "  Building weight masks" << endl;
+	/*cout << "  Building weight masks" << endl;
 
 	start = clock();
 
@@ -682,7 +682,85 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 	compositeImage.convertTo(finalImage, CV_8UC3);
 
 	elapsedTime = static_cast<float>(clock() - start) / CLOCKS_PER_SEC;
-	cout << "  Multiband blending total: " << elapsedTime << "s" << endl;
+	cout << "  Multiband blending total: " << elapsedTime << "s" << endl;*/
+
+	start = clock();
+
+
+	Size finalImageSize(finalMaxCorner.x - finalMinCorner.x, finalMaxCorner.y - finalMinCorner.y);
+	Mat finalImage(finalImageSize, images.getImage(getImage(0)).type());
+	Mat compositeImage(finalImage.size(), CV_32FC3, Scalar(0, 0, 0));
+	
+	TermCriteria criteria(CV_TERMCRIT_ITER + CV_TERMCRIT_EPS, 10, 1.0);
+
+	for (int y = 0; y < finalImageSize.height; ++y) {
+		for (int x = 0; x < finalImageSize.width; ++x) {
+			Mat labels, centers;
+			int nbValues = 0;
+
+			for (int i = 0; i < _nbImages; ++i) {
+				if (warpedMasks[i].at<uchar>(y + finalMinCorner.y, x + finalMinCorner.x)) {
+					nbValues++;
+				}
+			}
+
+			if (nbValues == 0) {
+				finalImage.at<Vec3b>(y, x)[0] = 0;
+				finalImage.at<Vec3b>(y, x)[1] = 0;
+				finalImage.at<Vec3b>(y, x)[2] = 0;
+				continue;
+			}
+
+			Mat values(nbValues, 3, CV_32F);
+			nbValues = 0;
+
+			for (int i = 0; i < _nbImages; ++i) {
+				if (warpedMasks[i].at<uchar>(y + finalMinCorner.y, x + finalMinCorner.x)) {
+					values.at<float>(nbValues, 0) = warpedImages[i].at<Vec3b>(y + finalMinCorner.y, x + finalMinCorner.x)[0];
+					values.at<float>(nbValues, 1) = warpedImages[i].at<Vec3b>(y + finalMinCorner.y, x + finalMinCorner.x)[1];
+					values.at<float>(nbValues++, 2) = warpedImages[i].at<Vec3b>(y + finalMinCorner.y, x + finalMinCorner.x)[2];
+				}
+			}
+
+			const int nbClusters = 4;
+
+			if (nbValues < nbClusters) {
+				finalImage.at<Vec3b>(y, x)[0] = values.at<float>(0, 0);
+				finalImage.at<Vec3b>(y, x)[1] = values.at<float>(0, 1);
+				finalImage.at<Vec3b>(y, x)[2] = values.at<float>(0, 2);
+			} else {
+				kmeans(values, nbClusters, labels, criteria, criteria.maxCount, KMEANS_RANDOM_CENTERS, centers);
+				centers.convertTo(centers, CV_8U);
+
+				int samplesCount[nbClusters];
+
+				for (int i = 0; i < nbClusters; ++i) {
+					samplesCount[i] = 0;
+				}
+
+				for (int i = 0; i < nbValues; ++i) {
+					samplesCount[labels.at<int>(i, 0)]++;
+				}
+
+				int sampleCountMax = 0;
+				int clusterMax = -1;
+
+				for (int i = 0; i < nbClusters; ++i) {
+					if (samplesCount[i] > sampleCountMax) {
+						sampleCountMax = samplesCount[i];
+						clusterMax = i;
+					}
+				}
+
+				finalImage.at<Vec3b>(y, x)[0] = centers.at<uchar>(clusterMax, 0);
+				finalImage.at<Vec3b>(y, x)[1] = centers.at<uchar>(clusterMax, 1);
+				finalImage.at<Vec3b>(y, x)[2] = centers.at<uchar>(clusterMax, 2);
+			}
+		}
+	}
+
+	elapsedTime = static_cast<float>(clock() - start) / CLOCKS_PER_SEC;
+	cout << "  kmeans total: " << elapsedTime << "s" << endl;
 
 	return finalImage;
 }
