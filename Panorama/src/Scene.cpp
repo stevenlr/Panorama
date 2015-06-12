@@ -722,7 +722,7 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 				}
 			}
 
-			const int nbClusters = 4;
+			const int nbClusters = 3;
 
 			if (nbValues < nbClusters) {
 				finalImage.at<Vec3b>(y, x)[0] = values.at<float>(0, 0);
