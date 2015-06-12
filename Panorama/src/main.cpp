@@ -143,13 +143,13 @@ int composePanorama2()
 	initModule_nonfree();
 
 	vector<string> sourceImagesNames;
-	string baseName = "../../datasets_v2/person/input_";
-	int nbImagesDataset = 120;
+	string baseName = "../moving_camera_datasets/people1/input_";
+	int nbImagesDataset = 41;
 
 	for (int i = 0; i < nbImagesDataset; i += 1) {
 		stringstream sstr;
 
-		sstr << baseName << setfill('0') << setw(4) << (i + 1) << ".png";
+		sstr << baseName << setfill('0') << setw(4) << (i + 1) << ".jpg";
 		sourceImagesNames.push_back(sstr.str());
 	}
 

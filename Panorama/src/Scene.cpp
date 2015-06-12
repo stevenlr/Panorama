@@ -404,13 +404,10 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 	finalMaxCorner.x = numeric_limits<int>::min();
 	finalMaxCorner.y = numeric_limits<int>::min();
 
-	cout << "  Warping images";
-
 	start = clock();
 	for (int i = 0; i < _nbImages; ++i) {
 		Mat img = images.getImage(getImage(i));
 		Size size = img.size();
-		Mat map(Size(projSizeX, projSizeY), CV_32FC2, Scalar(-1, -1));
 		Mat homography = getFullTransform(i).clone();
 		Point2i minCorner(numeric_limits<int>::max(), numeric_limits<int>::max());
 		Point2i maxCorner(numeric_limits<int>::min(), numeric_limits<int>::min());
@@ -420,18 +417,47 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 			continue;
 		}
 
-		cout << ".";
+		cout << "\r  Warping images " << (i + 1) << "/" << _nbImages << flush;
 
 		translation.at<double>(0, 2) = -size.width / 2;
 		translation.at<double>(1, 2) = -size.height / 2;
 		homography = homography * translation;
 
-		Mat invHomography = homography.inv();
+		for (int y = 0; y < size.height; ++y) {
+			for (int x = 0; x < size.width; ++x) {
+				if (y != 0 && x != 0 && y != size.height - 1 && x != size.width - 1) {
+					continue;
+				}
 
-		for (int x = 0; x < projSizeX; ++x) {
+				Mat_<double> point = Mat_<double>::ones(Size(1, 3));
+
+				point(0, 0) = x;
+				point(1, 0) = y;
+
+				point = homography * point;
+				point(0, 0) = point(0, 0) / point(2, 0);
+				point(1, 0) = point(1, 0) / point(2, 0);
+
+				double angleY = asin(point(1, 0) / _estimatedFocalLength);
+				double angleX = asin(point(0, 0) / (cos(angleY) * _estimatedFocalLength));
+
+				int px = static_cast<int>((angleX / PI + 0.5) * projSizeX);
+				int py = static_cast<int>((angleY * 2 / PI + 0.5) * projSizeY);
+
+				minCorner.x = std::min(minCorner.x, px);
+				minCorner.y = std::min(minCorner.y, py);
+				maxCorner.x = std::max(maxCorner.x, px);
+				maxCorner.y = std::max(maxCorner.y, py);
+			}
+		}
+
+		Mat invHomography = homography.inv();
+		Mat map(Size(maxCorner.x - minCorner.x + 1, maxCorner.y - minCorner.y + 1), CV_32FC2, Scalar(-1, -1));
+
+		for (int x = minCorner.x; x <= maxCorner.x; ++x) {
 			double angleX = ((double) x / projSizeX - 0.5) * PI;
 
-			for (int y = 0; y < projSizeY; ++y) {
+			for (int y = minCorner.y; y <= maxCorner.y; ++y) {
 				double angleY = ((double) y / projSizeY - 0.5) * PI / 2;
 
 				Mat spacePoint = Mat::zeros(Size(1, 3), CV_64F);
@@ -443,22 +469,19 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 				double projX = transformedPoint.at<double>(0, 0) / transformedPoint.at<double>(2, 0);
 				double projY = transformedPoint.at<double>(1, 0) / transformedPoint.at<double>(2, 0);
 
-				if (projX >= 0 && projX < size.width && projY >= 0 && projY < size.height) {
-					minCorner.x = std::min(minCorner.x, x);
-					minCorner.y = std::min(minCorner.y, y);
-					maxCorner.x = std::max(maxCorner.x, x);
-					maxCorner.y = std::max(maxCorner.y, y);
+				if (projX < 0 || projX >= size.width || projY < 0 || projY >= size.height) {
+					continue;
 				}
 
-				map.at<Vec2f>(y, x)[0] = static_cast<float>(projX);
-				map.at<Vec2f>(y, x)[1] = static_cast<float>(projY);
+				map.at<Vec2f>(y - minCorner.y, x - minCorner.x)[0] = static_cast<float>(projX);
+				map.at<Vec2f>(y - minCorner.y, x - minCorner.x)[1] = static_cast<float>(projY);
 			}
 		}
+		
+		Mat maskNormal(size, CV_8U, Scalar(255));
 
-		Mat maskNormal = Mat::ones(size, CV_8U);
-
-		remap(maskNormal, warpedMasks[i], map, Mat(), INTER_LINEAR, BORDER_TRANSPARENT);
-		remap(img, warpedImages[i], map, Mat(), INTER_LINEAR, BORDER_TRANSPARENT);
+		remap(maskNormal, warpedMasks[i], map, Mat(), INTER_LINEAR, BORDER_CONSTANT);
+		remap(img, warpedImages[i], map, Mat(), INTER_LINEAR, BORDER_CONSTANT);
 		corners[i] = make_pair(minCorner, maxCorner);
 
 		distanceTransform(warpedMasks[i], warpedWeights[i], CV_DIST_L1, 3);
@@ -477,13 +500,10 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 	finalMaxCorner.x = std::min(finalMaxCorner.x, projSizeX - 1);
 	finalMaxCorner.y = std::min(finalMaxCorner.y, projSizeY - 1);
 
-	cout << finalMinCorner << endl;
-	cout << finalMaxCorner << endl;
-
 	Mat overlapIntensities(Size(_nbImages, _nbImages), CV_64F, Scalar(0));
 	Mat overlapSizes(Size(_nbImages, _nbImages), CV_32S, Scalar(0));
 
-	cout << "  Compensating exposure" << endl;
+	/*cout << "  Compensating exposure" << endl;
 	start = clock();
 
 	for (int i = 0; i < _nbImages; ++i) {
@@ -563,7 +583,7 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 	}
 
 	elapsedTime = static_cast<float>(clock() - start) / _nbImages / CLOCKS_PER_SEC;
-	cout << "  Gain compensation average: " << elapsedTime << "s" << endl;
+	cout << "  Gain compensation average: " << elapsedTime << "s" << endl;*/
 
 	/*cout << "  Building weight masks" << endl;
 
@@ -694,12 +714,23 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 	TermCriteria criteria(CV_TERMCRIT_ITER + CV_TERMCRIT_EPS, 10, 1.0);
 
 	for (int y = 0; y < finalImageSize.height; ++y) {
+		cout << "\r  Extracting background " << static_cast<int>(static_cast<float>(y) / finalImageSize.height * 100) << "%" << flush;
+
 		for (int x = 0; x < finalImageSize.width; ++x) {
 			Mat labels, centers;
 			int nbValues = 0;
+			int px = x + finalMinCorner.x;
+			int py = y + finalMinCorner.y;
 
 			for (int i = 0; i < _nbImages; ++i) {
-				if (warpedMasks[i].at<uchar>(y + finalMinCorner.y, x + finalMinCorner.x)) {
+				int ix = px - corners[i].first.x;
+				int iy = py - corners[i].first.y;
+
+				if (ix < 0 || iy < 0 || ix >= warpedMasks[i].size().width || iy >= warpedMasks[i].size().height) {
+					continue;
+				}
+
+				if (warpedMasks[i].at<uchar>(iy, ix)) {
 					nbValues++;
 				}
 			}
@@ -715,10 +746,17 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 			nbValues = 0;
 
 			for (int i = 0; i < _nbImages; ++i) {
-				if (warpedMasks[i].at<uchar>(y + finalMinCorner.y, x + finalMinCorner.x)) {
-					values.at<float>(nbValues, 0) = warpedImages[i].at<Vec3b>(y + finalMinCorner.y, x + finalMinCorner.x)[0];
-					values.at<float>(nbValues, 1) = warpedImages[i].at<Vec3b>(y + finalMinCorner.y, x + finalMinCorner.x)[1];
-					values.at<float>(nbValues++, 2) = warpedImages[i].at<Vec3b>(y + finalMinCorner.y, x + finalMinCorner.x)[2];
+				int ix = px - corners[i].first.x;
+				int iy = py - corners[i].first.y;
+
+				if (ix < 0 || iy < 0 || ix >= warpedMasks[i].size().width || iy >= warpedMasks[i].size().height) {
+					continue;
+				}
+
+				if (warpedMasks[i].at<uchar>(iy, ix)) {
+					values.at<float>(nbValues, 0) = warpedImages[i].at<Vec3b>(iy, ix)[0];
+					values.at<float>(nbValues, 1) = warpedImages[i].at<Vec3b>(iy, ix)[1];
+					values.at<float>(nbValues++, 2) = warpedImages[i].at<Vec3b>(iy, ix)[2];
 				}
 			}
 
@@ -760,7 +798,7 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 	}
 
 	elapsedTime = static_cast<float>(clock() - start) / CLOCKS_PER_SEC;
-	cout << "  kmeans total: " << elapsedTime << "s" << endl;
+	cout << endl << "  kmeans total: " << elapsedTime << "s" << endl;
 
 	return finalImage;
 }
