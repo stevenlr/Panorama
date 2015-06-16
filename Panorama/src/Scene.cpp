@@ -5,10 +5,12 @@
 #include <algorithm>
 #include <iostream>
 #include <ctime>
+#include <iomanip>
 
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/stitching/detail/blenders.hpp>
 #include <opencv2/calib3d/calib3d.hpp>
+#include <opencv2/highgui/highgui.hpp>
 
 #include "Constants.h"
 #include "Calibration.h"
@@ -435,10 +437,6 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 				point(0, 0) /= _estimatedFocalLength;
 				point(1, 0) /= _estimatedFocalLength;
 
-				/*double angleY = asin(point(1, 0) / _estimatedFocalLength);
-				double angleX = asin(point(0, 0) / (cos(angleY) * _estimatedFocalLength));
-				double z = cos(angleX) * cos(angleY);*/
-
 				double angleX = atan2(point(0, 0), point(2, 0));
 				double angleY = atan2(point(1, 0), sqrt(point(0, 0) * point(0, 0) + point(2, 0) * point(2, 0)));
 
@@ -795,6 +793,81 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 				finalImage.at<Vec3b>(y, x)[2] = centers.at<uchar>(clusterMax, 2);
 			}
 		}
+	}
+
+	cout << endl;
+
+	for (int interestImage = 0; interestImage < _nbImages; ++interestImage) {
+		const Mat &baseImage = images.getImage(getImage(interestImage));
+		const Size &size = baseImage.size();
+		Mat_<Vec2f> unwarp(baseImage.size());
+		Mat homography = getFullTransform(interestImage).clone();
+		Mat translation = Mat::eye(Size(3, 3), CV_64F);
+
+		translation.at<double>(0, 2) = -size.width / 2;
+		translation.at<double>(1, 2) = -size.height / 2;
+		homography = homography * translation;
+
+		unwarp.setTo(Scalar(-1, -1));
+
+		cout << "\r  Extracting foreground " << (interestImage + 1) << "/" << _nbImages << flush;
+
+		for (int y = 0; y < size.height; ++y) {
+			for (int x = 0; x < size.width; ++x) {
+				Mat_<double> point = Mat_<double>::ones(Size(1, 3));
+
+				point(0, 0) = x;
+				point(1, 0) = y;
+
+				point = homography * point;
+
+				point(0, 0) /= _estimatedFocalLength;
+				point(1, 0) /= _estimatedFocalLength;
+
+				double angleX = atan2(point(0, 0), point(2, 0));
+				double angleY = atan2(point(1, 0), sqrt(point(0, 0) * point(0, 0) + point(2, 0) * point(2, 0)));
+
+				unwarp(y, x)[0] = ((angleX / PI + 0.5) * projSizeX) - finalMinCorner.x;
+				unwarp(y, x)[1] = ((angleY * 2 / PI + 0.5) * projSizeY) - finalMinCorner.y;
+			}
+		}
+
+		Mat unwarpedBackground, difference, thresholded, cleaned;
+		Mat stdDev, mean;
+		vector<Mat> channels(3);
+		double thresholdValue;
+
+		remap(finalImage, unwarpedBackground, unwarp, Mat(), INTER_LINEAR, BORDER_CONSTANT);
+		absdiff(unwarpedBackground, baseImage, difference);
+		split(difference, channels);
+		difference = max(channels[2], max(channels[1], channels[0]));
+		meanStdDev(difference, mean, stdDev);
+		thresholdValue = mean.at<double>(0, 0) + stdDev.at<double>(0, 0) * 3;
+		thresholded.convertTo(thresholded, CV_8U);
+		threshold(difference, thresholded, thresholdValue, 255, CV_THRESH_BINARY);
+
+		int closingRadius = 2;
+		Mat element = getStructuringElement(MORPH_RECT, Size(closingRadius * 2 + 1, closingRadius * 2 + 1), Point(closingRadius, closingRadius));
+
+		erode(thresholded, cleaned, element);
+
+		Mat m0, m1;
+
+		element = getStructuringElement(MORPH_RECT, Size(3, 3), Point(1, 1));
+		m1 = cleaned.clone();
+
+		do {
+			m0 = m1.clone();
+			dilate(m0, m1, element);
+			cv::min(m1, thresholded, m1);
+		} while (countNonZero(abs(m0 - m1)) != 0);
+
+		thresholded = m1;
+
+		stringstream sstr;
+
+		sstr << "output_difference_" << setfill('0') << setw(4) << (interestImage + 1) << ".jpg";
+		imwrite(sstr.str(), thresholded);
 	}
 
 	elapsedTime = static_cast<float>(clock() - start) / CLOCKS_PER_SEC;
