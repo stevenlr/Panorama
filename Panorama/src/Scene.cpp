@@ -505,6 +505,18 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 	Mat finalImage(finalImageSize, images.getImage(getImage(0)).type());
 	Mat_<float> stdDevImage(finalImageSize);
 	Mat compositeImage(finalImage.size(), CV_32FC3, Scalar(0, 0, 0));
+
+	VideoWriter videoWriter("output.avi", CV_FOURCC('M','J','P','G'), 4, finalImageSize);
+
+	for (int i = 0; i < _nbImages; ++i) {
+		finalImage.setTo(0);
+		warpedImages[i].copyTo(finalImage.colRange(corners[i].first.x - finalMinCorner.x, corners[i].second.x - finalMinCorner.x + 1)
+										 .rowRange(corners[i].first.y - finalMinCorner.y, corners[i].second.y - finalMinCorner.y + 1));
+		videoWriter.write(finalImage);
+	}
+
+	videoWriter.release();
+	finalImage.setTo(0);
 	
 	TermCriteria criteria(CV_TERMCRIT_ITER + CV_TERMCRIT_EPS, 10, 1.0);
 
@@ -572,7 +584,7 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 
 			stdDev = std::sqrtf(stdDev / nbValues);
 
-			const int nbClusters = 3;
+			const int nbClusters = 2;
 			const float minStdDev = 35;
 
 			if (stdDev > minStdDev && nbValues >= nbClusters) {
@@ -667,8 +679,8 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 
 		remap(finalImage, unwarpedBackground, unwarp, Mat(), INTER_LINEAR, BORDER_CONSTANT);
 		remap(stdDevImage, unwarpedStdDev, unwarp, Mat(), INTER_LINEAR, BORDER_CONSTANT);
-		GaussianBlur(baseImage, baseImage, Size(0, 0), 1, 0, BORDER_REPLICATE);
-		GaussianBlur(unwarpedBackground, unwarpedBackground, Size(0, 0), 1, 0, BORDER_REPLICATE);
+		/*GaussianBlur(baseImage, baseImage, Size(0, 0), 1, 0, BORDER_REPLICATE);
+		GaussianBlur(unwarpedBackground, unwarpedBackground, Size(0, 0), 1, 0, BORDER_REPLICATE);*/
 		absdiff(unwarpedBackground, baseImage, difference);
 		split(difference, channels);
 		difference = max(channels[2], max(channels[1], channels[0]));
