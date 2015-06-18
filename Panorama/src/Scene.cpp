@@ -707,6 +707,7 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 
 	Size finalImageSize(finalMaxCorner.x - finalMinCorner.x + 1, finalMaxCorner.y - finalMinCorner.y + 1);
 	Mat finalImage(finalImageSize, images.getImage(getImage(0)).type());
+	Mat_<float> stdDevImage(finalImageSize);
 	Mat compositeImage(finalImage.size(), CV_32FC3, Scalar(0, 0, 0));
 	
 	TermCriteria criteria(CV_TERMCRIT_ITER + CV_TERMCRIT_EPS, 10, 1.0);
@@ -741,6 +742,7 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 			}
 
 			Mat values(nbValues, 3, CV_32F);
+			float meanR = 0, meanG = 0, meanB = 0;
 			nbValues = 0;
 
 			for (int i = 0; i < _nbImages; ++i) {
@@ -752,19 +754,32 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 				}
 
 				if (warpedMasks[i].at<uchar>(iy, ix)) {
-					values.at<float>(nbValues, 0) = warpedImages[i].at<Vec3b>(iy, ix)[0];
-					values.at<float>(nbValues, 1) = warpedImages[i].at<Vec3b>(iy, ix)[1];
-					values.at<float>(nbValues++, 2) = warpedImages[i].at<Vec3b>(iy, ix)[2];
+					meanR += (values.at<float>(nbValues, 0) = warpedImages[i].at<Vec3b>(iy, ix)[0]);
+					meanG += (values.at<float>(nbValues, 1) = warpedImages[i].at<Vec3b>(iy, ix)[1]);
+					meanB += (values.at<float>(nbValues++, 2) = warpedImages[i].at<Vec3b>(iy, ix)[2]);
 				}
 			}
 
-			const int nbClusters = 3;
+			meanR /= nbValues;
+			meanG /= nbValues;
+			meanB /= nbValues;
 
-			if (nbValues < nbClusters) {
-				finalImage.at<Vec3b>(y, x)[0] = values.at<float>(0, 0);
-				finalImage.at<Vec3b>(y, x)[1] = values.at<float>(0, 1);
-				finalImage.at<Vec3b>(y, x)[2] = values.at<float>(0, 2);
-			} else {
+			float stdDev = 0;
+
+			for (int i = 0; i < nbValues; ++i) {
+				float diff = std::max(std::max(std::abs(meanR - values.at<float>(i, 0)),
+					std::abs(meanG - values.at<float>(i, 1))),
+					std::abs(meanB - values.at<float>(i, 2)));
+
+				stdDev += diff * diff;
+			}
+
+			stdDev = std::sqrtf(stdDev / nbValues);
+
+			const int nbClusters = 3;
+			const float minStdDev = 35;
+
+			if (stdDev > minStdDev && nbValues >= nbClusters) {
 				kmeans(values, nbClusters, labels, criteria, criteria.maxCount, KMEANS_RANDOM_CENTERS, centers);
 				centers.convertTo(centers, CV_8U);
 
@@ -788,17 +803,35 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 					}
 				}
 
-				finalImage.at<Vec3b>(y, x)[0] = centers.at<uchar>(clusterMax, 0);
-				finalImage.at<Vec3b>(y, x)[1] = centers.at<uchar>(clusterMax, 1);
-				finalImage.at<Vec3b>(y, x)[2] = centers.at<uchar>(clusterMax, 2);
+				meanR = centers.at<uchar>(clusterMax, 0);
+				meanG = centers.at<uchar>(clusterMax, 1);
+				meanB = centers.at<uchar>(clusterMax, 2);
+				stdDev = 0;
+
+				for (int i = 0; i < nbValues; ++i) {
+					if (labels.at<int>(i, 0) == clusterMax) {
+						float diff = std::max(std::max(std::abs(meanR - values.at<float>(i, 0)),
+							std::abs(meanG - values.at<float>(i, 1))),
+							std::abs(meanB - values.at<float>(i, 2)));
+
+						stdDev += diff * diff;
+					}
+				}
+
+				stdDev = std::sqrtf(stdDev / nbValues);
 			}
+
+			finalImage.at<Vec3b>(y, x)[0] = meanR;
+			finalImage.at<Vec3b>(y, x)[1] = meanG;
+			finalImage.at<Vec3b>(y, x)[2] = meanB;
+			stdDevImage(y, x) = stdDev;
 		}
 	}
 
 	cout << endl;
 
 	for (int interestImage = 0; interestImage < _nbImages; ++interestImage) {
-		const Mat &baseImage = images.getImage(getImage(interestImage));
+		Mat baseImage = images.getImage(getImage(interestImage));
 		const Size &size = baseImage.size();
 		Mat_<Vec2f> unwarp(baseImage.size());
 		Mat homography = getFullTransform(interestImage).clone();
@@ -832,19 +865,36 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 			}
 		}
 
-		Mat unwarpedBackground, difference, thresholded, cleaned;
+		Mat unwarpedBackground, difference, cleaned, unwarpedStdDev;
 		Mat stdDev, mean;
 		vector<Mat> channels(3);
 		double thresholdValue;
 
 		remap(finalImage, unwarpedBackground, unwarp, Mat(), INTER_LINEAR, BORDER_CONSTANT);
+		remap(stdDevImage, unwarpedStdDev, unwarp, Mat(), INTER_LINEAR, BORDER_CONSTANT);
+		GaussianBlur(baseImage, baseImage, Size(0, 0), 1);
+		GaussianBlur(unwarpedBackground, unwarpedBackground, Size(0, 0), 1);
 		absdiff(unwarpedBackground, baseImage, difference);
 		split(difference, channels);
 		difference = max(channels[2], max(channels[1], channels[0]));
-		meanStdDev(difference, mean, stdDev);
-		thresholdValue = mean.at<double>(0, 0) + stdDev.at<double>(0, 0) * 3;
-		thresholded.convertTo(thresholded, CV_8U);
-		threshold(difference, thresholded, thresholdValue, 255, CV_THRESH_BINARY);
+
+		Mat_<uchar> thresholded(size);
+
+		thresholded.setTo(0);
+
+		for (int y = 0; y < size.height; ++y) {
+			uchar *thresholdedPtr = thresholded.ptr(y);
+			float *stdDevPtr = unwarpedStdDev.ptr<float>(y);
+			uchar *differencePtr = difference.ptr<uchar>(y);
+
+			for (int x = 0; x < size.width; ++x) {
+				if (*differencePtr++ > *stdDevPtr++ * 3) {
+					*thresholdedPtr = 255;
+				}
+
+				thresholdedPtr++;
+			}
+		}
 
 		int closingRadius = 2;
 		Mat element = getStructuringElement(MORPH_RECT, Size(closingRadius * 2 + 1, closingRadius * 2 + 1), Point(closingRadius, closingRadius));
