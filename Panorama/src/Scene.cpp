@@ -518,8 +518,8 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 			int py = y + finalMinCorner.y;
 
 			for (int i = 0; i < _nbImages; ++i) {
-				int ix = px - corners[i].first.x;
-				int iy = py - corners[i].first.y;
+				int ix = static_cast<int>(px - corners[i].first.x);
+				int iy = static_cast<int>(py - corners[i].first.y);
 
 				if (ix < 0 || iy < 0 || ix >= warpedMasks[i].size().width || iy >= warpedMasks[i].size().height) {
 					continue;
@@ -542,8 +542,8 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 			nbValues = 0;
 
 			for (int i = 0; i < _nbImages; ++i) {
-				int ix = px - corners[i].first.x;
-				int iy = py - corners[i].first.y;
+				int ix = static_cast<int>(px - corners[i].first.x);
+				int iy = static_cast<int>(py - corners[i].first.y);
 
 				if (ix < 0 || iy < 0 || ix >= warpedMasks[i].size().width || iy >= warpedMasks[i].size().height) {
 					continue;
@@ -617,9 +617,9 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 				stdDev = std::sqrtf(stdDev / nbValues);
 			}
 
-			finalImage.at<Vec3b>(y, x)[0] = meanR;
-			finalImage.at<Vec3b>(y, x)[1] = meanG;
-			finalImage.at<Vec3b>(y, x)[2] = meanB;
+			finalImage.at<Vec3b>(y, x)[0] = static_cast<uchar>(meanR);
+			finalImage.at<Vec3b>(y, x)[1] = static_cast<uchar>(meanG);
+			finalImage.at<Vec3b>(y, x)[2] = static_cast<uchar>(meanB);
 			stdDevImage(y, x) = stdDev;
 		}
 	}
@@ -656,15 +656,14 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 				double angleX = atan2(point(0, 0), point(2, 0));
 				double angleY = atan2(point(1, 0), sqrt(point(0, 0) * point(0, 0) + point(2, 0) * point(2, 0)));
 
-				unwarp(y, x)[0] = ((angleX / PI + 0.5) * projSizeX) - finalMinCorner.x;
-				unwarp(y, x)[1] = ((angleY * 2 / PI + 0.5) * projSizeY) - finalMinCorner.y;
+				unwarp(y, x)[0] = static_cast<float>(((angleX / PI + 0.5) * projSizeX) - finalMinCorner.x);
+				unwarp(y, x)[1] = static_cast<float>(((angleY * 2 / PI + 0.5) * projSizeY) - finalMinCorner.y);
 			}
 		}
 
 		Mat unwarpedBackground, difference, cleaned, unwarpedStdDev;
 		Mat stdDev, mean;
 		vector<Mat> channels(3);
-		double thresholdValue;
 
 		remap(finalImage, unwarpedBackground, unwarp, Mat(), INTER_LINEAR, BORDER_CONSTANT);
 		remap(stdDevImage, unwarpedStdDev, unwarp, Mat(), INTER_LINEAR, BORDER_CONSTANT);

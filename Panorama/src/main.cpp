@@ -155,25 +155,17 @@ int composePanorama2()
 
 	int nbImages = sourceImagesNames.size();
 	ImagesRegistry images;
-
-	float featureExtractionTimeTotal = 0;
+	clock_t start = clock();
 
 	for (int i = 0; i < nbImages; ++i) {
-		cout << "\rReading images and extracting features " << (i + 1) << "/" << nbImages << flush;
-		clock_t start = clock();
-
 		if (!images.addImage(sourceImagesNames[i])) {
 			cerr << "Error when opening image " << sourceImagesNames[i] << endl;
 			return 1;
 		}
-
-		featureExtractionTimeTotal += static_cast<float>(clock() - start) / CLOCKS_PER_SEC;
 	}
 
-	cout << endl;
-
-	featureExtractionTimeTotal /= nbImages;
-	cout << "Feature extraction average: " << featureExtractionTimeTotal << "s" << endl;
+	images.extractFeatures();
+	cout << "Feature extraction: " << (static_cast<float>(clock() - start) / CLOCKS_PER_SEC) << "s" << endl;
 
 	ImageSequence sequence;
 
@@ -189,6 +181,8 @@ int composePanorama2()
 	for (int i = 0; i < sequence.getNbKeyframes(); ++i) {
 		images2.addImage(sourceImagesNames[sequence.getKeyFrame(i)]);
 	}
+
+	images2.extractFeatures();
 
 	MatchGraph graph(images2);
 	vector<Scene> scenes;
@@ -214,7 +208,7 @@ int composePanorama2()
 	cout << scenes.size() << " scenes built" << endl;
 
 	for (size_t i = 0; i < scenes.size(); ++i) {
-		cout << "Bundle adjustment " << i << endl;
+		//cout << "Bundle adjustment " << i << endl;
 		//scenes[i].bundleAdjustment(images, graph);
 
 		cout << "Compositing final image " << i << endl;
