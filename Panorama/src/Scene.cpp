@@ -668,8 +668,8 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 
 		remap(finalImage, unwarpedBackground, unwarp, Mat(), INTER_LINEAR, BORDER_CONSTANT);
 		remap(stdDevImage, unwarpedStdDev, unwarp, Mat(), INTER_LINEAR, BORDER_CONSTANT);
-		GaussianBlur(baseImage, baseImage, Size(0, 0), 1);
-		GaussianBlur(unwarpedBackground, unwarpedBackground, Size(0, 0), 1);
+		GaussianBlur(baseImage, baseImage, Size(0, 0), 1, 0, BORDER_REPLICATE);
+		GaussianBlur(unwarpedBackground, unwarpedBackground, Size(0, 0), 1, 0, BORDER_REPLICATE);
 		absdiff(unwarpedBackground, baseImage, difference);
 		split(difference, channels);
 		difference = max(channels[2], max(channels[1], channels[0]));
@@ -684,7 +684,7 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 			uchar *differencePtr = difference.ptr<uchar>(y);
 
 			for (int x = 0; x < size.width; ++x) {
-				if (*differencePtr++ > *stdDevPtr++ * 3) {
+				if (*differencePtr++ > *stdDevPtr++ * 2) {
 					*thresholdedPtr = 255;
 				}
 
