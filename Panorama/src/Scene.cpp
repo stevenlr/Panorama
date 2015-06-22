@@ -14,6 +14,7 @@
 
 #include "Constants.h"
 #include "Calibration.h"
+#include "GaussianMixtureModel.h"
 
 using namespace std;
 using namespace cv;
@@ -517,8 +518,59 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 
 	videoWriter.release();
 	finalImage.setTo(0);
+
+	int nbPixel = finalImageSize.width * finalImageSize.height;
+	vector<GaussianMixture> mixtures(nbPixel);
+
+	for (int y = 0; y < finalImageSize.height; ++y) {
+		cout << "\r  Building gaussian mixtures " << static_cast<int>(static_cast<float>(y) / finalImageSize.height * 100) << "%" << flush;
+
+		for (int x = 0; x < finalImageSize.width; ++x) {
+			int px = x + finalMinCorner.x;
+			int py = y + finalMinCorner.y;
+			GaussianMixture &mixture = mixtures[y * finalImageSize.width + x];
+			int nbFrames = 0;
+
+			finalImage.at<Vec3b>(y, x)[0] = 0;
+			finalImage.at<Vec3b>(y, x)[1] = 0;
+			finalImage.at<Vec3b>(y, x)[2] = 0;
+
+			for (int i = 0; i < _nbImages; ++i) {
+				int ix = static_cast<int>(px - corners[i].first.x);
+				int iy = static_cast<int>(py - corners[i].first.y);
+
+				if (ix < 0 || iy < 0 || ix >= warpedMasks[i].size().width || iy >= warpedMasks[i].size().height) {
+					continue;
+				}
+
+				if (warpedMasks[i].at<uchar>(iy, ix)) {
+					nbFrames++;
+				}
+			}
+
+			if (nbFrames == 0) {
+				continue;
+			}
+
+			new(&mixture) GaussianMixture(nbFrames);
+
+			for (int i = 0; i < _nbImages; ++i) {
+				int ix = static_cast<int>(px - corners[i].first.x);
+				int iy = static_cast<int>(py - corners[i].first.y);
+
+				if (ix < 0 || iy < 0 || ix >= warpedMasks[i].size().width || iy >= warpedMasks[i].size().height) {
+					continue;
+				}
+
+				if (warpedMasks[i].at<uchar>(iy, ix)) {
+					Vec3b color = warpedImages[i].at<Vec3b>(iy, ix);
+					mixture.update(Vec3d(color[0], color[1], color[2]));
+				}
+			}
+		}
+	}
 	
-	TermCriteria criteria(CV_TERMCRIT_ITER + CV_TERMCRIT_EPS, 10, 1.0);
+	/*TermCriteria criteria(CV_TERMCRIT_ITER + CV_TERMCRIT_EPS, 10, 1.0);
 
 	for (int y = 0; y < finalImageSize.height; ++y) {
 		cout << "\r  Extracting background " << static_cast<int>(static_cast<float>(y) / finalImageSize.height * 100) << "%" << flush;
@@ -679,8 +731,6 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 
 		remap(finalImage, unwarpedBackground, unwarp, Mat(), INTER_LINEAR, BORDER_CONSTANT);
 		remap(stdDevImage, unwarpedStdDev, unwarp, Mat(), INTER_LINEAR, BORDER_CONSTANT);
-		/*GaussianBlur(baseImage, baseImage, Size(0, 0), 1, 0, BORDER_REPLICATE);
-		GaussianBlur(unwarpedBackground, unwarpedBackground, Size(0, 0), 1, 0, BORDER_REPLICATE);*/
 		absdiff(unwarpedBackground, baseImage, difference);
 		split(difference, channels);
 		difference = max(channels[2], max(channels[1], channels[0]));
@@ -725,7 +775,7 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 
 		sstr << "output_difference_" << setfill('0') << setw(4) << (interestImage + 1) << ".jpg";
 		imwrite(sstr.str(), thresholded);
-	}
+	}*/
 
 	elapsedTime = static_cast<float>(clock() - start) / CLOCKS_PER_SEC;
 	cout << endl << "  kmeans total: " << elapsedTime << "s" << endl;
