@@ -14,7 +14,7 @@ namespace {
 
 void GaussianMixture::update(Vec3d color)
 {
-	const double deviation0 = 4;
+	const double deviation0 = 10;
 	double alpha = 1.0 / _nbFrames;
 
 	if (_nbFrames == 0) {
@@ -38,10 +38,11 @@ void GaussianMixture::update(Vec3d color)
 	while (it != _mixture.end() && !isCloseToADistrib) {
 		GaussianDistribution &distrib = *it++;
 		Vec3d diffColor = color - distrib.mean;
-		double colorDistSquared = diffColor.dot(diffColor);
+		double colorDist = max(max(abs(diffColor[0]), abs(diffColor[1])), abs(diffColor[2]));
+		double colorDistSquared = colorDist * colorDist;
 		double malDist = std::sqrt(colorDistSquared) / distrib.deviation;
 
-		if (malDist < 2 * distrib.deviation) {
+		if (malDist < 3 * distrib.deviation) {
 			isCloseToADistrib = true;
 			distrib.weight = distrib.weight + alpha * (1 - distrib.weight);
 			distrib.mean = distrib.mean + diffColor * alpha / distrib.weight;
@@ -86,9 +87,9 @@ int GaussianMixture::getNbDistributions() const
 
 int GaussianMixture::getNbBackground() const
 {
-	const double cf = 0.1;
-	int bMax = -1;
-	double sumMax = 0;
+	const double cf = 0.01;
+	int b = -1;
+	double sumMin = numeric_limits<double>::max();
 	int nbDistrib = getNbDistributions();
 
 	for (int i = 0; i < nbDistrib; ++i) {
@@ -102,14 +103,14 @@ int GaussianMixture::getNbBackground() const
 		}
 
 		if (sum > (1 - cf)) {
-			if (sum > sumMax) {
-				sumMax = sum;
-				bMax = i;
+			if (sum < sumMin) {
+				sumMin = sum;
+				b = i;
 			}
 		}
 	}
 
-	return bMax;
+	return b;
 }
 
 Vec3d GaussianMixture::getBackgroundColor(int B) const
@@ -117,12 +118,18 @@ Vec3d GaussianMixture::getBackgroundColor(int B) const
 	Vec3d color(0, 0, 0);
 	int nbDistrib = getNbDistributions();
 	list<GaussianDistribution>::const_iterator it = _mixture.cbegin();
+	double sum = 0;
+
+	int num = 2;
 
 	for (int i = 0; i <= B; ++i) {
 		const GaussianDistribution &distrib = *it++;
 
-		color += distrib.weight * distrib.mean;
+		if (num == i) {
+			color += distrib.weight * distrib.mean;
+			sum += distrib.weight;
+		}
 	}
 
-	return color;
+	return color / sum;
 }
