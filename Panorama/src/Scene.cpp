@@ -567,6 +567,14 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 					mixture.update(Vec3d(color[0], color[1], color[2]));
 				}
 			}
+
+			mixture.normalize();
+
+			Vec3d color = mixture.getBackgroundColor(mixture.getNbBackground());
+
+			finalImage.at<Vec3b>(y, x)[0] = color[0];
+			finalImage.at<Vec3b>(y, x)[1] = color[1];
+			finalImage.at<Vec3b>(y, x)[2] = color[2];
 		}
 	}
 	

@@ -143,13 +143,13 @@ int composePanorama2()
 	initModule_nonfree();
 
 	vector<string> sourceImagesNames;
-	string baseName = "../moving_camera_datasets/people1/input_";
-	int nbImagesDataset = 41;
+	string baseName = "../../datasets_v2/cars2/input_";
+	int nbImagesDataset = 30;
 
 	for (int i = 0; i < nbImagesDataset; i += 1) {
 		stringstream sstr;
 
-		sstr << baseName << setfill('0') << setw(4) << (i + 1) << ".jpg";
+		sstr << baseName << setfill('0') << setw(4) << (i + 1) << ".png";
 		sourceImagesNames.push_back(sstr.str());
 	}
 
@@ -195,7 +195,7 @@ int composePanorama2()
 	sequence.addIntermediateFramesToScene(scenes[0]);
 	scenes[0].setEstimatedFocalLength(sequence.estimateFocalLength());
 
-	float width = 2048;
+	float width = 3000;
 	int projSizeX = static_cast<int>(width);
 	int projSizeY = static_cast<int>(width / 2);
 

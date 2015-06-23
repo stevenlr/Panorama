@@ -16,6 +16,10 @@ public:
 	GaussianMixture(int nbFrames = 0) : _nbFrames(nbFrames) {}
 
 	void update(cv::Vec3d color);
+	void normalize();
+	int getNbDistributions() const;
+	int getNbBackground() const;
+	cv::Vec3d getBackgroundColor(int B) const;
 
 private:
 	int _nbFrames;
