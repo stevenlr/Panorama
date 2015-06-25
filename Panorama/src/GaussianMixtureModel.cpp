@@ -1,6 +1,7 @@
 #include "GaussianMixtureModel.h"
 
 #include <iostream>
+#include <algorithm>
 
 using namespace std;
 using namespace cv;
@@ -15,7 +16,7 @@ namespace {
 void GaussianMixture::update(Vec3d color)
 {
 	const double deviation0 = 10;
-	double alpha = 1.0 / _nbFrames;
+	double alpha = 1.0 / (_nbProcessedFrames + 1);
 
 	if (_nbFrames == 0) {
 		return;
@@ -32,7 +33,7 @@ void GaussianMixture::update(Vec3d color)
 		return;
 	}
 
-	list<GaussianDistribution>::iterator it = _mixture.begin();
+	vector<GaussianDistribution>::iterator it = _mixture.begin();
 	bool isCloseToADistrib = false;
 
 	while (it != _mixture.end() && !isCloseToADistrib) {
@@ -44,9 +45,9 @@ void GaussianMixture::update(Vec3d color)
 
 		if (malDist < 3 * distrib.deviation) {
 			isCloseToADistrib = true;
-			distrib.weight = distrib.weight + alpha * (1 - distrib.weight);
 			distrib.mean = distrib.mean + diffColor * alpha / distrib.weight;
 			distrib.deviation = std::sqrt(distrib.deviation * distrib.deviation + alpha / distrib.weight * (colorDistSquared - distrib.deviation * distrib.deviation));
+			distrib.weight = distrib.weight + alpha * (1 - distrib.weight);
 		} else {
 			distrib.weight = distrib.weight - alpha * distrib.weight;
 		}
@@ -61,12 +62,14 @@ void GaussianMixture::update(Vec3d color)
 		_mixture.push_back(distrib);
 	}
 
-	_mixture.sort(compareGaussianDistribution);
+	std::sort(_mixture.begin(), _mixture.end(), compareGaussianDistribution);
+	normalize();
+	_nbProcessedFrames++;
 }
 
 void GaussianMixture::normalize()
 {
-	list<GaussianDistribution>::iterator it = _mixture.begin();
+	vector<GaussianDistribution>::iterator it = _mixture.begin();
 	double sum = 0;
 
 	while (it != _mixture.end()) {
@@ -93,7 +96,7 @@ int GaussianMixture::getNbBackground() const
 	int nbDistrib = getNbDistributions();
 
 	for (int i = 0; i < nbDistrib; ++i) {
-		list<GaussianDistribution>::const_iterator it = _mixture.cbegin();
+		vector<GaussianDistribution>::const_iterator it = _mixture.cbegin();
 		int j = 0;
 		double sum = 0;
 
@@ -117,19 +120,24 @@ Vec3d GaussianMixture::getBackgroundColor(int B) const
 {
 	Vec3d color(0, 0, 0);
 	int nbDistrib = getNbDistributions();
-	list<GaussianDistribution>::const_iterator it = _mixture.cbegin();
+	vector<GaussianDistribution>::const_iterator it = _mixture.cbegin();
 	double sum = 0;
 
-	int num = 2;
+	//int num = 2;
 
 	for (int i = 0; i <= B; ++i) {
 		const GaussianDistribution &distrib = *it++;
 
-		if (num == i) {
+		//if (num == i) {
 			color += distrib.weight * distrib.mean;
 			sum += distrib.weight;
-		}
+		//}
 	}
 
 	return color / sum;
+}
+
+const GaussianDistribution &GaussianMixture::getDistribution(int i) const
+{
+	return _mixture[i];
 }

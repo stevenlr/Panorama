@@ -143,13 +143,13 @@ int composePanorama2()
 	initModule_nonfree();
 
 	vector<string> sourceImagesNames;
-	string baseName = "../../datasets_v2/cars2/input_";
-	int nbImagesDataset = 30;
+	string baseName = "../moving_camera_datasets/people1/input_";
+	int nbImagesDataset = 41;
 
 	for (int i = 0; i < nbImagesDataset; i += 1) {
 		stringstream sstr;
 
-		sstr << baseName << setfill('0') << setw(4) << (i + 1) << ".png";
+		sstr << baseName << setfill('0') << setw(4) << (i + 1) << ".jpg";
 		sourceImagesNames.push_back(sstr.str());
 	}
 
@@ -158,12 +158,14 @@ int composePanorama2()
 	clock_t start = clock();
 
 	for (int i = 0; i < nbImages; ++i) {
+		cout << "\rOpening images " << (i + 1) << "/" << nbImages << flush;
 		if (!images.addImage(sourceImagesNames[i])) {
 			cerr << "Error when opening image " << sourceImagesNames[i] << endl;
 			return 1;
 		}
 	}
 
+	cout << endl;
 	images.extractFeatures();
 	cout << "Feature extraction: " << (static_cast<float>(clock() - start) / CLOCKS_PER_SEC) << "s" << endl;
 

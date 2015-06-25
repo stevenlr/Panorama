@@ -484,8 +484,6 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 		remap(img, warpedImages[i], map, Mat(), INTER_LINEAR, BORDER_CONSTANT);
 		corners[i] = make_pair(minCorner, maxCorner);
 
-		//distanceTransform(warpedMasks[i], warpedWeights[i], CV_DIST_L1, 3);
-
 		finalMinCorner.x = std::min(finalMinCorner.x, minCorner.x);
 		finalMinCorner.y = std::min(finalMinCorner.y, minCorner.y);
 		finalMaxCorner.x = std::max(finalMaxCorner.x, maxCorner.x);
@@ -565,21 +563,29 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 				if (warpedMasks[i].at<uchar>(iy, ix)) {
 					double mask = warpedMasks[i].at<uchar>(iy, ix) / 255.0;
 					Vec3b color = warpedImages[i].at<Vec3b>(iy, ix) / mask;
+
 					mixture.update(Vec3d(color[0], color[1], color[2]));
 				}
 			}
 
 			mixture.normalize();
 
-			Vec3d color = mixture.getBackgroundColor(mixture.getNbBackground());
+			int B = mixture.getNbBackground();
+			Vec3d color = mixture.getBackgroundColor(B);
 
 			finalImage.at<Vec3b>(y, x)[0] = saturate_cast<uchar>(color[0]);
 			finalImage.at<Vec3b>(y, x)[1] = saturate_cast<uchar>(color[1]);
 			finalImage.at<Vec3b>(y, x)[2] = saturate_cast<uchar>(color[2]);
 
-			//finalImage.at<Vec3b>(y, x)[0] = mixture.getNbBackground() * 32;
-			//finalImage.at<Vec3b>(y, x)[1] = mixture.getNbDistributions() * 32;
-			//finalImage.at<Vec3b>(y, x)[2] = 0;
+			float dev = 0;
+			float sum = 0;
+
+			for (int b = 0; b <= B; ++b) {
+				dev += mixture.getDistribution(b).deviation * mixture.getDistribution(b).deviation * mixture.getDistribution(b).weight;
+				sum += mixture.getDistribution(b).weight;
+			}
+
+			stdDevImage(y, x) = sqrt(dev / sum);
 		}
 	}
 	
@@ -699,7 +705,7 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 			finalImage.at<Vec3b>(y, x)[2] = static_cast<uchar>(meanB);
 			stdDevImage(y, x) = stdDev;
 		}
-	}
+	}*/
 
 	cout << endl;
 
@@ -758,7 +764,10 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 			uchar *differencePtr = difference.ptr<uchar>(y);
 
 			for (int x = 0; x < size.width; ++x) {
-				if (*differencePtr++ > *stdDevPtr++ * 2) {
+				float stdDev = *stdDevPtr++;
+				float diff = *differencePtr++;
+
+				if (diff > stdDev * 3) {
 					*thresholdedPtr = 255;
 				}
 
@@ -788,7 +797,7 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 
 		sstr << "output_difference_" << setfill('0') << setw(4) << (interestImage + 1) << ".jpg";
 		imwrite(sstr.str(), thresholded);
-	}*/
+	}
 
 	elapsedTime = static_cast<float>(clock() - start) / CLOCKS_PER_SEC;
 	cout << endl << "  kmeans total: " << elapsedTime << "s" << endl;

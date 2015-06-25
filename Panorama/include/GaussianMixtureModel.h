@@ -1,7 +1,7 @@
 #ifndef GAUSSIAN_MIXTURE_MODEL_H_
 #define GAUSSIAN_MIXTURE_MODEL_H_
 
-#include <list>
+#include <vector>
 
 #include <opencv2/core/core.hpp>
 
@@ -13,17 +13,19 @@ struct GaussianDistribution {
 
 class GaussianMixture {
 public:
-	GaussianMixture(int nbFrames = 0) : _nbFrames(nbFrames) {}
+	GaussianMixture(int nbFrames = 0) : _nbFrames(nbFrames), _nbProcessedFrames(0) {}
 
 	void update(cv::Vec3d color);
 	void normalize();
 	int getNbDistributions() const;
 	int getNbBackground() const;
 	cv::Vec3d getBackgroundColor(int B) const;
+	const GaussianDistribution &getDistribution(int i) const;
 
 private:
 	int _nbFrames;
-	std::list<GaussianDistribution> _mixture;
+	int _nbProcessedFrames;
+	std::vector<GaussianDistribution> _mixture;
 };
 
 #endif
