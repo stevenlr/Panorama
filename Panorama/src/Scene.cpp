@@ -11,6 +11,7 @@
 #include <opencv2/stitching/detail/blenders.hpp>
 #include <opencv2/calib3d/calib3d.hpp>
 #include <opencv2/highgui/highgui.hpp>
+#include "gco/GCoptimization.h"
 
 #include "Constants.h"
 #include "Calibration.h"
@@ -387,12 +388,93 @@ void Scene::bundleAdjustment(const ImagesRegistry &images, const MatchGraph &mat
 }
 
 #define WEIGHT_MAX 1000.0f
+#define NB_CLUSTERS 2
+
+struct PixelModel {
+	Vec3b centers[NB_CLUSTERS];
+	float weight[NB_CLUSTERS];
+	Vec3b average;
+};
+
+class LabelizedImage {
+public:
+	LabelizedImage(int width, int height) :
+		_width(width), _height(height), _gco(width, height, NB_CLUSTERS)
+	{
+		_data = new PixelModel[width * height];
+		_gco.setDataCostFunctor(new DataCostFunctor(this));
+		_gco.setSmoothCostFunctor(new SmoothCostFunctor(this));
+	}
+
+	~LabelizedImage()
+	{
+		delete[] _data;
+	}
+
+	PixelModel &operator()(int x, int y)
+	{
+		return _data[y * _width + x];
+	}
+
+	void setLabel(int x, int y, int label)
+	{
+		_gco.setLabel(y * _width + x, label);
+	}
+
+	Vec3b getColor(int x, int y)
+	{
+		return _data[y * _width + x].centers[_gco.whatLabel(y * _width + x)];
+	}
+
+	struct DataCostFunctor : public GCoptimization::DataCostFunctor {
+		DataCostFunctor(LabelizedImage *image) : _image(image) {}
+
+		virtual GCoptimization::EnergyTermType compute(GCoptimization::SiteID s, GCoptimization::LabelID l)
+		{
+			Vec3b diff = _image->_data[s].average - _image->_data[s].centers[l];
+			double dist = diff[0] * diff[0] + diff[1] * diff[1] + diff[2] * diff[2];
+
+			return static_cast<GCoptimization::EnergyTermType>(dist);
+		}
+
+	private:
+		LabelizedImage *_image;
+	};
+
+	struct SmoothCostFunctor : public GCoptimization::SmoothCostFunctor {
+		SmoothCostFunctor(LabelizedImage *image) : _image(image) {}
+
+		virtual GCoptimization::EnergyTermType compute(GCoptimization::SiteID s1, GCoptimization::SiteID s2, GCoptimization::LabelID l1, GCoptimization::LabelID l2)
+		{
+			double dist = 0;
+
+			for (int i = 0; i < 3; ++i) {
+				dist = max(abs(static_cast<double>(_image->_data[s1].centers[l1][i]) - static_cast<double>(_image->_data[s2].centers[l2][i])), dist);
+			}
+
+			return static_cast<GCoptimization::EnergyTermType>(min(100.0, dist));
+		}
+
+	private:
+		LabelizedImage *_image;
+	};
+
+	void update()
+	{
+		_gco.swap(1);
+	}
+
+private:
+	int _width;
+	int _height;
+	PixelModel *_data;
+	GCoptimizationGridGraph _gco;
+};
 
 Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX, int projSizeY)
 {
 	vector<Mat> warpedImages(_nbImages);
 	vector<Mat> warpedMasks(_nbImages);
-	//vector<Mat> warpedWeights(_nbImages);
 	vector<pair<Point2d, Point2d>> corners(_nbImages);
 	Point finalMinCorner(numeric_limits<int>::max(), numeric_limits<int>::max());
 	Point finalMaxCorner(numeric_limits<int>::min(), numeric_limits<int>::min());
@@ -518,7 +600,7 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 	finalImage.setTo(0);
 
 	int nbPixel = finalImageSize.width * finalImageSize.height;
-	vector<GaussianMixture> mixtures(nbPixel);
+	/*vector<GaussianMixture> mixtures(nbPixel);
 
 	for (int y = 0; y < finalImageSize.height; ++y) {
 		cout << "\r  Building gaussian mixtures " << static_cast<int>(static_cast<float>(y) / finalImageSize.height * 100) << "%" << flush;
@@ -587,18 +669,20 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 
 			stdDevImage(y, x) = sqrt(dev / sum);
 		}
-	}
+	}*/
 	
-	/*TermCriteria criteria(CV_TERMCRIT_ITER + CV_TERMCRIT_EPS, 10, 1.0);
+	TermCriteria criteria(CV_TERMCRIT_ITER + CV_TERMCRIT_EPS, 10, 1.0);
+	LabelizedImage labelizedImage(finalImageSize.width, finalImageSize.height);
 
 	for (int y = 0; y < finalImageSize.height; ++y) {
-		cout << "\r  Extracting background " << static_cast<int>(static_cast<float>(y) / finalImageSize.height * 100) << "%" << flush;
+		cout << "\r  Modeling background " << static_cast<int>(static_cast<float>(y + 1) / finalImageSize.height * 100) << "%" << flush;
 
 		for (int x = 0; x < finalImageSize.width; ++x) {
 			Mat labels, centers;
 			int nbValues = 0;
 			int px = x + finalMinCorner.x;
 			int py = y + finalMinCorner.y;
+			PixelModel &model = labelizedImage(x, y);
 
 			for (int i = 0; i < _nbImages; ++i) {
 				int ix = static_cast<int>(px - corners[i].first.x);
@@ -614,9 +698,14 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 			}
 
 			if (nbValues == 0) {
-				finalImage.at<Vec3b>(y, x)[0] = 0;
-				finalImage.at<Vec3b>(y, x)[1] = 0;
-				finalImage.at<Vec3b>(y, x)[2] = 0;
+				model.average = Vec3d(0, 0, 0);
+				labelizedImage.setLabel(x, y, 0);
+				
+				for (int l = 0; l < NB_CLUSTERS; ++l) {
+					model.weight[l] = 1;
+					model.centers[l] = Vec3d(0, 0, 0);
+				}
+
 				continue;
 			}
 
@@ -633,15 +722,18 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 				}
 
 				if (warpedMasks[i].at<uchar>(iy, ix)) {
-					meanR += (values.at<float>(nbValues, 0) = warpedImages[i].at<Vec3b>(iy, ix)[0]);
-					meanG += (values.at<float>(nbValues, 1) = warpedImages[i].at<Vec3b>(iy, ix)[1]);
-					meanB += (values.at<float>(nbValues++, 2) = warpedImages[i].at<Vec3b>(iy, ix)[2]);
+					float mask = static_cast<float>(warpedMasks[i].at<uchar>(iy, ix)) / 255;
+
+					meanR += (values.at<float>(nbValues, 0) = (warpedImages[i].at<Vec3b>(iy, ix)[0] / mask));
+					meanG += (values.at<float>(nbValues, 1) = (warpedImages[i].at<Vec3b>(iy, ix)[1] / mask));
+					meanB += (values.at<float>(nbValues++, 2) = (warpedImages[i].at<Vec3b>(iy, ix)[2] / mask));
 				}
 			}
 
 			meanR /= nbValues;
 			meanG /= nbValues;
 			meanB /= nbValues;
+			model.average = Vec3b(meanR, meanG, meanB);
 
 			float stdDev = 0;
 
@@ -655,16 +747,15 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 
 			stdDev = std::sqrtf(stdDev / nbValues);
 
-			const int nbClusters = 2;
-			const float minStdDev = 35;
+			const float minStdDev = 11;
 
-			if (stdDev > minStdDev && nbValues >= nbClusters) {
-				kmeans(values, nbClusters, labels, criteria, criteria.maxCount, KMEANS_RANDOM_CENTERS, centers);
+			if (stdDev > minStdDev && nbValues >= NB_CLUSTERS) {
+				kmeans(values, NB_CLUSTERS, labels, criteria, criteria.maxCount, KMEANS_RANDOM_CENTERS, centers);
 				centers.convertTo(centers, CV_8U);
 
-				int samplesCount[nbClusters];
+				int samplesCount[NB_CLUSTERS];
 
-				for (int i = 0; i < nbClusters; ++i) {
+				for (int i = 0; i < NB_CLUSTERS; ++i) {
 					samplesCount[i] = 0;
 				}
 
@@ -675,41 +766,55 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 				int sampleCountMax = 0;
 				int clusterMax = -1;
 
-				for (int i = 0; i < nbClusters; ++i) {
+				for (int i = 0; i < NB_CLUSTERS; ++i) {
 					if (samplesCount[i] > sampleCountMax) {
 						sampleCountMax = samplesCount[i];
 						clusterMax = i;
 					}
 				}
 
-				meanR = centers.at<uchar>(clusterMax, 0);
-				meanG = centers.at<uchar>(clusterMax, 1);
-				meanB = centers.at<uchar>(clusterMax, 2);
-				stdDev = 0;
-
-				for (int i = 0; i < nbValues; ++i) {
-					if (labels.at<int>(i, 0) == clusterMax) {
-						float diff = std::max(std::max(std::abs(meanR - values.at<float>(i, 0)),
-							std::abs(meanG - values.at<float>(i, 1))),
-							std::abs(meanB - values.at<float>(i, 2)));
-
-						stdDev += diff * diff;
-					}
+				for (int l = 0; l < NB_CLUSTERS; ++l) {
+					model.weight[l] = static_cast<float>(samplesCount[l]) / nbValues;
+					model.centers[l] = Vec3b(centers.at<uchar>(l, 0), centers.at<uchar>(l, 1), centers.at<uchar>(l, 2));
 				}
 
-				stdDev = std::sqrtf(stdDev / nbValues);
-			}
+				labelizedImage.setLabel(x, y, clusterMax);
+			} else {
+				for (int l = 0; l < NB_CLUSTERS; ++l) {
+					model.weight[l] = 1;
+					model.centers[l] = model.average;
+				}
 
-			finalImage.at<Vec3b>(y, x)[0] = static_cast<uchar>(meanR);
-			finalImage.at<Vec3b>(y, x)[1] = static_cast<uchar>(meanG);
-			finalImage.at<Vec3b>(y, x)[2] = static_cast<uchar>(meanB);
-			stdDevImage(y, x) = stdDev;
+				labelizedImage.setLabel(x, y, 0);
+			}
 		}
-	}*/
+	}
 
 	cout << endl;
+	cout << "  Optimizing labeling" << endl;
 
-	for (int interestImage = 0; interestImage < _nbImages; ++interestImage) {
+	for (int i = 0; i < 4; ++i) {
+		for (int y = 0; y < finalImageSize.height; ++y) {
+			cout << "\r  Extracting background " << static_cast<int>(static_cast<float>(y + 1) / finalImageSize.height * 100) << "%" << flush;
+
+			for (int x = 0; x < finalImageSize.width; ++x) {
+				Vec3d color = labelizedImage.getColor(x, y);
+
+				finalImage.at<Vec3b>(y, x)[0] = saturate_cast<uchar>(color[0]);
+				finalImage.at<Vec3b>(y, x)[1] = saturate_cast<uchar>(color[1]);
+				finalImage.at<Vec3b>(y, x)[2] = saturate_cast<uchar>(color[2]);
+			}
+		}
+
+		stringstream sstr;
+		sstr << "output-gco-" << i << ".jpg";
+		imwrite(sstr.str(), finalImage);
+
+		labelizedImage.update();
+		cout << endl;
+	}
+
+	/*for (int interestImage = 0; interestImage < _nbImages; ++interestImage) {
 		Mat baseImage = images.getImage(getImage(interestImage));
 		const Size &size = baseImage.size();
 		Mat_<Vec2f> unwarp(baseImage.size());
@@ -798,7 +903,7 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 		sstr << "output_difference_" << setfill('0') << setw(4) << (interestImage + 1) << ".jpg";
 		imwrite(sstr.str(), thresholded);
 	}
-
+	*/
 	elapsedTime = static_cast<float>(clock() - start) / CLOCKS_PER_SEC;
 	cout << endl << "  kmeans total: " << elapsedTime << "s" << endl;
 

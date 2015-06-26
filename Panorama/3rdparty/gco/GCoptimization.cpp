@@ -7,6 +7,9 @@
 #include <stdlib.h>
 #include <vector>
 #include <algorithm>
+#include <iostream>
+
+using namespace std;
 
 // will leave this one just for the laughs :)
 //#define olga_assert(expr) assert(!(expr))

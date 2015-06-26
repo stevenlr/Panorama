@@ -143,8 +143,8 @@ int composePanorama2()
 	initModule_nonfree();
 
 	vector<string> sourceImagesNames;
-	string baseName = "../moving_camera_datasets/people1/input_";
-	int nbImagesDataset = 41;
+	string baseName = "../moving_camera_datasets/people2/input_";
+	int nbImagesDataset = 30;
 
 	for (int i = 0; i < nbImagesDataset; i += 1) {
 		stringstream sstr;
