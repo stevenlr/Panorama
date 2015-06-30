@@ -387,12 +387,11 @@ void Scene::bundleAdjustment(const ImagesRegistry &images, const MatchGraph &mat
 	Mat_<double> parameters = JtJ.inv() * Jtr;
 }
 
-#define WEIGHT_MAX 1000.0f
 #define NB_CLUSTERS 2
 
 struct PixelModel {
 	Vec3b centers[NB_CLUSTERS];
-	float weight[NB_CLUSTERS];
+	float weights[NB_CLUSTERS];
 	Vec3b average;
 };
 
@@ -461,7 +460,7 @@ public:
 
 	void update()
 	{
-		_gco.swap(1);
+		_gco.expansion(1);
 	}
 
 private:
@@ -702,7 +701,7 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 				labelizedImage.setLabel(x, y, 0);
 				
 				for (int l = 0; l < NB_CLUSTERS; ++l) {
-					model.weight[l] = 1;
+					model.weights[l] = 1;
 					model.centers[l] = Vec3d(0, 0, 0);
 				}
 
@@ -774,14 +773,14 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 				}
 
 				for (int l = 0; l < NB_CLUSTERS; ++l) {
-					model.weight[l] = static_cast<float>(samplesCount[l]) / nbValues;
+					model.weights[l] = static_cast<float>(samplesCount[l]) / nbValues;
 					model.centers[l] = Vec3b(centers.at<uchar>(l, 0), centers.at<uchar>(l, 1), centers.at<uchar>(l, 2));
 				}
 
 				labelizedImage.setLabel(x, y, clusterMax);
 			} else {
 				for (int l = 0; l < NB_CLUSTERS; ++l) {
-					model.weight[l] = 1;
+					model.weights[l] = 1;
 					model.centers[l] = model.average;
 				}
 
@@ -791,14 +790,80 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 	}
 
 	cout << endl;
-	cout << "  Optimizing labeling" << endl;
 
-	for (int i = 0; i < 4; ++i) {
+	{
+		int permutation[NB_CLUSTERS];
+		int bestPermutation[NB_CLUSTERS];
+		int nbPermutation = 1;
+		int offset[2][2] = {{-1, 0}, {0, -1}};
+
+		for (int i = 0; i < NB_CLUSTERS; ++i) {
+			nbPermutation *= i;
+			permutation[i] = i;
+		}
+
+		for (int y = 0; y < finalImageSize.height; ++y) {
+			cout << "\r  Sorting labels " << static_cast<int>(static_cast<float>(y + 1) / finalImageSize.height * 100) << "%" << flush;
+
+			for (int x = 0; x < finalImageSize.width; ++x) {
+				PixelModel &model = labelizedImage(x, y);
+				double bestDist = numeric_limits<double>::max();
+
+				do {
+					double dist = 0;
+
+					for (int i = 0; i < 2; ++i) {
+						int xx = x + offset[i][0];
+						int yy = y + offset[i][1];
+
+						if (xx < 0 || xx >= finalImageSize.width || yy < 0 || yy >= finalImageSize.height) {
+							continue;
+						}
+
+						PixelModel &model0 = labelizedImage(xx, yy);
+
+						for (int l = 0; l < NB_CLUSTERS; ++l) {
+							double clusterDist = 0;
+
+							clusterDist = max(static_cast<double>(abs(model.centers[permutation[l]][0] - model0.centers[l][0])), clusterDist);
+							clusterDist = max(static_cast<double>(abs(model.centers[permutation[l]][1] - model0.centers[l][1])), clusterDist);
+							clusterDist = max(static_cast<double>(abs(model.centers[permutation[l]][2] - model0.centers[l][2])), clusterDist);
+
+							dist += clusterDist;
+						}
+					}
+
+					if (dist < bestDist) {
+						bestDist = dist;
+						copy_n(permutation, NB_CLUSTERS, bestPermutation);
+					}
+				} while (next_permutation(permutation, permutation + NB_CLUSTERS));
+
+				Vec3b centers[NB_CLUSTERS];
+				float weights[NB_CLUSTERS];
+
+				copy_n(model.centers, NB_CLUSTERS, centers);
+				copy_n(model.weights, NB_CLUSTERS, weights);
+
+				for (int i = 0; i < NB_CLUSTERS; ++i) {
+					model.centers[i] = centers[bestPermutation[i]];
+					model.weights[i] = weights[bestPermutation[i]];
+				}
+			}
+		}
+	}
+
+	cout << endl;
+
+	for (int i = 0; i < NB_CLUSTERS; ++i) {
 		for (int y = 0; y < finalImageSize.height; ++y) {
 			cout << "\r  Extracting background " << static_cast<int>(static_cast<float>(y + 1) / finalImageSize.height * 100) << "%" << flush;
 
 			for (int x = 0; x < finalImageSize.width; ++x) {
 				Vec3d color = labelizedImage.getColor(x, y);
+				PixelModel &model = labelizedImage(x, y);
+
+				color = model.centers[i];
 
 				finalImage.at<Vec3b>(y, x)[0] = saturate_cast<uchar>(color[0]);
 				finalImage.at<Vec3b>(y, x)[1] = saturate_cast<uchar>(color[1]);
@@ -810,7 +875,7 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 		sstr << "output-gco-" << i << ".jpg";
 		imwrite(sstr.str(), finalImage);
 
-		labelizedImage.update();
+		//labelizedImage.update();
 		cout << endl;
 	}
 
