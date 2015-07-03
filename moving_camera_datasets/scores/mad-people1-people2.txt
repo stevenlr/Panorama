@@ -1,0 +1,49 @@
+=== people1 ===
+
+frame 1
+precision =  0.70780
+recall =  0.94800
+accuracy =  0.98787
+
+frame 10
+precision =  0.91254
+recall =  0.96026
+accuracy =  0.99672
+
+frame 20
+precision =  0.91264
+recall =  0.96258
+accuracy =  0.99717
+
+frame 30
+precision =  0.79024
+recall =  0.96789
+accuracy =  0.99370
+
+frame 40
+precision =  0.89332
+recall =  0.96268
+accuracy =  0.99736
+
+
+=== people2 ===
+
+frame 1
+precision =  0.69671
+recall =  0.55394
+accuracy =  0.94321
+
+frame 10
+precision =  0.94567
+recall =  0.46671
+accuracy =  0.95764
+
+frame 20
+precision =  0.94355
+recall =  0.70720
+accuracy =  0.96965
+
+frame 30
+precision =  0.82550
+recall =  0.92868
+accuracy =  0.97986
