@@ -389,6 +389,7 @@ void Scene::bundleAdjustment(const ImagesRegistry &images, const MatchGraph &mat
 
 #define NB_CLUSTERS 2
 
+/*
 struct PixelModel {
 	Vec3b centers[NB_CLUSTERS];
 	float weights[NB_CLUSTERS];
@@ -468,7 +469,15 @@ private:
 	int _height;
 	PixelModel *_data;
 	GCoptimizationGridGraph _gco;
-};
+};*/
+
+bool compareVec3f(Vec3f first, Vec3f second)
+{
+	float d1 = first.dot(first);
+	float d2 = second.dot(second);
+
+	return d1 < d2;
+}
 
 Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX, int projSizeY)
 {
@@ -583,16 +592,23 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 
 	Size finalImageSize(finalMaxCorner.x - finalMinCorner.x + 1, finalMaxCorner.y - finalMinCorner.y + 1);
 	Mat finalImage(finalImageSize, images.getImage(getImage(0)).type());
-	Mat_<float> stdDevImage(finalImageSize);
+	Mat_<float> madImage(finalImageSize);
 	Mat compositeImage(finalImage.size(), CV_32FC3, Scalar(0, 0, 0));
 
 	VideoWriter videoWriter("output.avi", CV_FOURCC('M','J','P','G'), 4, finalImageSize);
 
 	for (int i = 0; i < _nbImages; ++i) {
 		finalImage.setTo(0);
-		warpedImages[i].copyTo(finalImage.colRange(corners[i].first.x - finalMinCorner.x, corners[i].second.x - finalMinCorner.x + 1)
-										 .rowRange(corners[i].first.y - finalMinCorner.y, corners[i].second.y - finalMinCorner.y + 1));
+		warpedImages[i].copyTo(finalImage.colRange(static_cast<int>(corners[i].first.x - finalMinCorner.x),
+													static_cast<int>(corners[i].second.x - finalMinCorner.x + 1))
+										 .rowRange(static_cast<int>(corners[i].first.y - finalMinCorner.y),
+													static_cast<int>(corners[i].second.y - finalMinCorner.y + 1)));
 		videoWriter.write(finalImage);
+
+		stringstream sstr;
+
+		sstr << "cube_" << setfill('0') << setw(4) << (i + 1) << ".png";
+		imwrite(sstr.str(), finalImage);
 	}
 
 	videoWriter.release();
@@ -671,7 +687,7 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 	}*/
 	
 	TermCriteria criteria(CV_TERMCRIT_ITER + CV_TERMCRIT_EPS, 10, 1.0);
-	LabelizedImage labelizedImage(finalImageSize.width, finalImageSize.height);
+	//LabelizedImage labelizedImage(finalImageSize.width, finalImageSize.height);
 
 	for (int y = 0; y < finalImageSize.height; ++y) {
 		cout << "\r  Modeling background " << static_cast<int>(static_cast<float>(y + 1) / finalImageSize.height * 100) << "%" << flush;
@@ -681,7 +697,7 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 			int nbValues = 0;
 			int px = x + finalMinCorner.x;
 			int py = y + finalMinCorner.y;
-			PixelModel &model = labelizedImage(x, y);
+			//PixelModel &model = labelizedImage(x, y);
 
 			for (int i = 0; i < _nbImages; ++i) {
 				int ix = static_cast<int>(px - corners[i].first.x);
@@ -697,18 +713,19 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 			}
 
 			if (nbValues == 0) {
-				model.average = Vec3d(0, 0, 0);
+				/*model.average = Vec3d(0, 0, 0);
 				labelizedImage.setLabel(x, y, 0);
 				
 				for (int l = 0; l < NB_CLUSTERS; ++l) {
 					model.weights[l] = 1;
 					model.centers[l] = Vec3d(0, 0, 0);
-				}
+				}*/
 
 				continue;
 			}
 
 			Mat values(nbValues, 3, CV_32F);
+			vector<Vec3f> valuesVec(nbValues);
 			float meanR = 0, meanG = 0, meanB = 0;
 			nbValues = 0;
 
@@ -725,16 +742,33 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 
 					meanR += (values.at<float>(nbValues, 0) = (warpedImages[i].at<Vec3b>(iy, ix)[0] / mask));
 					meanG += (values.at<float>(nbValues, 1) = (warpedImages[i].at<Vec3b>(iy, ix)[1] / mask));
-					meanB += (values.at<float>(nbValues++, 2) = (warpedImages[i].at<Vec3b>(iy, ix)[2] / mask));
+					meanB += (values.at<float>(nbValues, 2) = (warpedImages[i].at<Vec3b>(iy, ix)[2] / mask));
+
+					valuesVec[nbValues][0] = values.at<float>(nbValues, 0);
+					valuesVec[nbValues][1] = values.at<float>(nbValues, 1);
+					valuesVec[nbValues][2] = values.at<float>(nbValues, 2);
+
+					nbValues++;
 				}
 			}
 
 			meanR /= nbValues;
 			meanG /= nbValues;
 			meanB /= nbValues;
-			model.average = Vec3b(meanR, meanG, meanB);
+			//model.average = Vec3b(meanR, meanG, meanB);
+
+			sort(valuesVec.begin(), valuesVec.end(), compareVec3f);
 
 			float stdDev = 0;
+			Vec3f medianValue;
+			int medianIndex = nbValues / 2;
+			vector<float> diffVect;
+
+			if (nbValues % 2 == 0) {
+				medianValue = (valuesVec[medianIndex - 1] + valuesVec[medianIndex]) / 2;
+			} else {
+				medianValue = valuesVec[medianIndex];
+			}
 
 			for (int i = 0; i < nbValues; ++i) {
 				float diff = std::max(std::max(std::abs(meanR - values.at<float>(i, 0)),
@@ -742,9 +776,26 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 					std::abs(meanB - values.at<float>(i, 2)));
 
 				stdDev += diff * diff;
+
+				diff = std::max(std::max(std::abs(medianValue[0] - values.at<float>(i, 0)),
+					std::abs(medianValue[1] - values.at<float>(i, 1))),
+					std::abs(medianValue[2] - values.at<float>(i, 2)));
+
+				diffVect.push_back(diff);
 			}
 
+			float mad;
+
+			sort(diffVect.begin(), diffVect.end());
 			stdDev = std::sqrtf(stdDev / nbValues);
+
+			if (nbValues % 2 == 0) {
+				mad = (diffVect[medianIndex - 1] + diffVect[medianIndex]) / 2;
+			} else {
+				mad = diffVect[medianIndex];
+			}
+
+			madImage(y, x) = mad;
 
 			const float minStdDev = 11;
 
@@ -753,45 +804,50 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 				centers.convertTo(centers, CV_8U);
 
 				int samplesCount[NB_CLUSTERS];
+				int clusterMax = 0;
 
 				for (int i = 0; i < NB_CLUSTERS; ++i) {
 					samplesCount[i] = 0;
 				}
 
 				for (int i = 0; i < nbValues; ++i) {
-					samplesCount[labels.at<int>(i, 0)]++;
-				}
-
-				int sampleCountMax = 0;
-				int clusterMax = -1;
-
-				for (int i = 0; i < NB_CLUSTERS; ++i) {
-					if (samplesCount[i] > sampleCountMax) {
-						sampleCountMax = samplesCount[i];
-						clusterMax = i;
+					if (++samplesCount[labels.at<int>(i, 0)] > samplesCount[clusterMax]) {
+						clusterMax = labels.at<int>(i, 0);
 					}
 				}
 
-				for (int l = 0; l < NB_CLUSTERS; ++l) {
+				for (int i = 0; i < NB_CLUSTERS; ++i) {
+					
+				}
+
+				finalImage.at<Vec3b>(y, x)[0] = saturate_cast<uchar>(centers.at<uchar>(clusterMax, 0));
+				finalImage.at<Vec3b>(y, x)[1] = saturate_cast<uchar>(centers.at<uchar>(clusterMax, 1));
+				finalImage.at<Vec3b>(y, x)[2] = saturate_cast<uchar>(centers.at<uchar>(clusterMax, 2));
+
+				/*for (int l = 0; l < NB_CLUSTERS; ++l) {
 					model.weights[l] = static_cast<float>(samplesCount[l]) / nbValues;
 					model.centers[l] = Vec3b(centers.at<uchar>(l, 0), centers.at<uchar>(l, 1), centers.at<uchar>(l, 2));
 				}
 
-				labelizedImage.setLabel(x, y, clusterMax);
+				labelizedImage.setLabel(x, y, clusterMax);*/
 			} else {
-				for (int l = 0; l < NB_CLUSTERS; ++l) {
+				finalImage.at<Vec3b>(y, x)[0] = saturate_cast<uchar>(meanR);
+				finalImage.at<Vec3b>(y, x)[1] = saturate_cast<uchar>(meanG);
+				finalImage.at<Vec3b>(y, x)[2] = saturate_cast<uchar>(meanB);
+
+				/*for (int l = 0; l < NB_CLUSTERS; ++l) {
 					model.weights[l] = 1;
 					model.centers[l] = model.average;
 				}
 
-				labelizedImage.setLabel(x, y, 0);
+				labelizedImage.setLabel(x, y, 0);*/
 			}
 		}
 	}
 
 	cout << endl;
 
-	{
+	/*{
 		int permutation[NB_CLUSTERS];
 		int bestPermutation[NB_CLUSTERS];
 		int nbPermutation = 1;
@@ -853,9 +909,9 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 		}
 	}
 
-	cout << endl;
+	cout << endl;*/
 
-	for (int i = 0; i < NB_CLUSTERS; ++i) {
+	/*for (int i = 0; i < NB_CLUSTERS; ++i) {
 		for (int y = 0; y < finalImageSize.height; ++y) {
 			cout << "\r  Extracting background " << static_cast<int>(static_cast<float>(y + 1) / finalImageSize.height * 100) << "%" << flush;
 
@@ -877,9 +933,9 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 
 		//labelizedImage.update();
 		cout << endl;
-	}
+	}*/
 
-	/*for (int interestImage = 0; interestImage < _nbImages; ++interestImage) {
+	for (int interestImage = 0; interestImage < _nbImages; ++interestImage) {
 		Mat baseImage = images.getImage(getImage(interestImage));
 		const Size &size = baseImage.size();
 		Mat_<Vec2f> unwarp(baseImage.size());
@@ -914,12 +970,12 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 			}
 		}
 
-		Mat unwarpedBackground, difference, cleaned, unwarpedStdDev;
+		Mat unwarpedBackground, difference, cleaned, unwarpedMad;
 		Mat stdDev, mean;
 		vector<Mat> channels(3);
 
 		remap(finalImage, unwarpedBackground, unwarp, Mat(), INTER_LINEAR, BORDER_CONSTANT);
-		remap(stdDevImage, unwarpedStdDev, unwarp, Mat(), INTER_LINEAR, BORDER_CONSTANT);
+		remap(madImage, unwarpedMad, unwarp, Mat(), INTER_LINEAR, BORDER_CONSTANT);
 		absdiff(unwarpedBackground, baseImage, difference);
 		split(difference, channels);
 		difference = max(channels[2], max(channels[1], channels[0]));
@@ -930,20 +986,32 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 
 		for (int y = 0; y < size.height; ++y) {
 			uchar *thresholdedPtr = thresholded.ptr(y);
-			float *stdDevPtr = unwarpedStdDev.ptr<float>(y);
+			float *madPtr = unwarpedMad.ptr<float>(y);
 			uchar *differencePtr = difference.ptr<uchar>(y);
 
 			for (int x = 0; x < size.width; ++x) {
-				float stdDev = *stdDevPtr++;
-				float diff = *differencePtr++;
+				float mad = *madPtr++;
+				float diff = *differencePtr;
 
-				if (diff > stdDev * 3) {
+				if (diff > mad * 3) {
 					*thresholdedPtr = 255;
 				}
 
+				*differencePtr = saturate_cast<uchar>(abs(diff - mad));
+
+				differencePtr++;
 				thresholdedPtr++;
 			}
 		}
+
+		stringstream sstr;
+
+		sstr << "output_foreground_" << setfill('0') << setw(4) << (interestImage + 1) << ".png";
+		imwrite(sstr.str(), thresholded);
+
+		sstr.str("");
+		sstr << "output_difference_" << setfill('0') << setw(4) << (interestImage + 1) << ".png";
+		imwrite(sstr.str(), difference);
 
 		int closingRadius = 2;
 		Mat element = getStructuringElement(MORPH_RECT, Size(closingRadius * 2 + 1, closingRadius * 2 + 1), Point(closingRadius, closingRadius));
@@ -961,14 +1029,22 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 			cv::min(m1, thresholded, m1);
 		} while (countNonZero(abs(m0 - m1)) != 0);
 
-		thresholded = m1;
+		cleaned = m1.clone();
+		dilate(cleaned, m1, element);
 
-		stringstream sstr;
+		do {
+			m0 = m1.clone();
+			erode(m0, m1, element);
+			cv::max(m1, cleaned, m1);
+		} while (countNonZero(abs(m0 - m1)) != 0);
 
-		sstr << "output_difference_" << setfill('0') << setw(4) << (interestImage + 1) << ".jpg";
-		imwrite(sstr.str(), thresholded);
+		cleaned = m1;
+
+		sstr.str("");
+		sstr << "output_foreground_clean_" << setfill('0') << setw(4) << (interestImage + 1) << ".png";
+		imwrite(sstr.str(), cleaned);
 	}
-	*/
+	
 	elapsedTime = static_cast<float>(clock() - start) / CLOCKS_PER_SEC;
 	cout << endl << "  kmeans total: " << elapsedTime << "s" << endl;
 
