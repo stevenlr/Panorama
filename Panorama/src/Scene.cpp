@@ -580,6 +580,8 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 		finalMaxCorner.y = std::max(finalMaxCorner.y, maxCorner.y);
 	}
 
+	cout << finalMinCorner << " " << finalMaxCorner << endl;
+
 	elapsedTime = static_cast<float>(clock() - start) / _nbImages / CLOCKS_PER_SEC;
 	cout << endl << "  Warping average: " << elapsedTime << "s" << endl;
 

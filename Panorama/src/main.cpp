@@ -144,9 +144,9 @@ int composePanorama2()
 
 	vector<string> sourceImagesNames;
 	string baseName = "../moving_camera_datasets/people2/input_";
-	int nbImagesDataset = 30;
+	int nbImagesDataset = 4;
 
-	for (int i = 0; i < nbImagesDataset; i += 1) {
+	for (int i = 0; i < nbImagesDataset; i += 3) {
 		stringstream sstr;
 
 		sstr << baseName << setfill('0') << setw(4) << (i + 1) << ".jpg";
@@ -177,6 +177,7 @@ int composePanorama2()
 	}
 
 	cout << endl;
+	return 0;
 
 	ImagesRegistry images2;
 
@@ -197,22 +198,13 @@ int composePanorama2()
 	sequence.addIntermediateFramesToScene(scenes[0]);
 	scenes[0].setEstimatedFocalLength(sequence.estimateFocalLength());
 
-	float width = 3000;
+	float width = 2048;
 	int projSizeX = static_cast<int>(width);
 	int projSizeY = static_cast<int>(width / 2);
-
-	/**
-	 * Bundle adjustment :
-	 *  - between every keyframe (stored in matchgraph)
-	 *  - from each intermediate frame to the last keyframe (stored in imagesequence)
-	 */
 	
 	cout << scenes.size() << " scenes built" << endl;
 
 	for (size_t i = 0; i < scenes.size(); ++i) {
-		//cout << "Bundle adjustment " << i << endl;
-		//scenes[i].bundleAdjustment(images, graph);
-
 		cout << "Compositing final image " << i << endl;
 		Mat finalImage = scenes[i].composePanoramaSpherical(images, projSizeX, projSizeY);
 
