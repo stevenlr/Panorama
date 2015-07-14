@@ -153,7 +153,7 @@ void ImageSequence::addImage(int imageId, const ImagesRegistry &images)
 	}
 
 	computeHomography(images.getDescriptor(lastKeyFrame), images.getDescriptor(imageId), matchInfos);
-	matchInfos.homography = registerImages(images.getImage(lastKeyFrame), images.getImage(imageId), matchInfos.homography);
+	//matchInfos.homography = registerImages(images.getImage(lastKeyFrame), images.getImage(imageId), matchInfos.homography);
 
 	Mat_<double> translation = Mat_<double>::eye(3, 3);
 

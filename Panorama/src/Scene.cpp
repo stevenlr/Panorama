@@ -387,7 +387,7 @@ void Scene::bundleAdjustment(const ImagesRegistry &images, const MatchGraph &mat
 	Mat_<double> parameters = JtJ.inv() * Jtr;
 }
 
-#define NB_CLUSTERS 2
+#define NB_CLUSTERS 4
 
 /*
 struct PixelModel {
@@ -595,6 +595,7 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 	Size finalImageSize(finalMaxCorner.x - finalMinCorner.x + 1, finalMaxCorner.y - finalMinCorner.y + 1);
 	Mat finalImage(finalImageSize, images.getImage(getImage(0)).type());
 	Mat_<float> madImage(finalImageSize);
+	Mat_<float> stdDevBgImage(finalImageSize);
 	Mat compositeImage(finalImage.size(), CV_32FC3, Scalar(0, 0, 0));
 
 	VideoWriter videoWriter("output.avi", CV_FOURCC('M','J','P','G'), 4, finalImageSize);
@@ -818,13 +819,26 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 					}
 				}
 
-				for (int i = 0; i < NB_CLUSTERS; ++i) {
-					
+				stdDev = 0;
+
+				for (int i = 0; i < nbValues; ++i) {
+					if (labels.at<int>(i, 0) != clusterMax) {
+						continue;
+					}
+
+					float diff = std::max(std::max(std::abs(centers.at<uchar>(clusterMax, 0) - values.at<float>(i, 0)),
+						std::abs(centers.at<uchar>(clusterMax, 1) - values.at<float>(i, 1))),
+						std::abs(centers.at<uchar>(clusterMax, 2) - values.at<float>(i, 2)));
+
+					stdDev += diff * diff;
 				}
+
+				stdDev = std::sqrtf(stdDev / samplesCount[clusterMax]);
 
 				finalImage.at<Vec3b>(y, x)[0] = saturate_cast<uchar>(centers.at<uchar>(clusterMax, 0));
 				finalImage.at<Vec3b>(y, x)[1] = saturate_cast<uchar>(centers.at<uchar>(clusterMax, 1));
 				finalImage.at<Vec3b>(y, x)[2] = saturate_cast<uchar>(centers.at<uchar>(clusterMax, 2));
+				stdDevBgImage(y, x) = stdDev;
 
 				/*for (int l = 0; l < NB_CLUSTERS; ++l) {
 					model.weights[l] = static_cast<float>(samplesCount[l]) / nbValues;
@@ -836,6 +850,7 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 				finalImage.at<Vec3b>(y, x)[0] = saturate_cast<uchar>(meanR);
 				finalImage.at<Vec3b>(y, x)[1] = saturate_cast<uchar>(meanG);
 				finalImage.at<Vec3b>(y, x)[2] = saturate_cast<uchar>(meanB);
+				stdDevBgImage(y, x) = stdDev;
 
 				/*for (int l = 0; l < NB_CLUSTERS; ++l) {
 					model.weights[l] = 1;
@@ -972,12 +987,13 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 			}
 		}
 
-		Mat unwarpedBackground, difference, cleaned, unwarpedMad;
+		Mat unwarpedBackground, difference, cleaned, unwarpedMad, unwarpedSdvDevBd;
 		Mat stdDev, mean;
 		vector<Mat> channels(3);
 
 		remap(finalImage, unwarpedBackground, unwarp, Mat(), INTER_LINEAR, BORDER_CONSTANT);
 		remap(madImage, unwarpedMad, unwarp, Mat(), INTER_LINEAR, BORDER_CONSTANT);
+		remap(stdDevBgImage, unwarpedSdvDevBd, unwarp, Mat(), INTER_LINEAR, BORDER_CONSTANT);
 		absdiff(unwarpedBackground, baseImage, difference);
 		split(difference, channels);
 		difference = max(channels[2], max(channels[1], channels[0]));
@@ -989,13 +1005,15 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 		for (int y = 0; y < size.height; ++y) {
 			uchar *thresholdedPtr = thresholded.ptr(y);
 			float *madPtr = unwarpedMad.ptr<float>(y);
+			float *stdDevPtr = unwarpedSdvDevBd.ptr<float>(y);
 			uchar *differencePtr = difference.ptr<uchar>(y);
 
 			for (int x = 0; x < size.width; ++x) {
 				float mad = *madPtr++;
 				float diff = *differencePtr;
+				float stdDev = *stdDevPtr;
 
-				if (diff > mad * 3) {
+				if (diff > mad * 3 && diff > 3 * stdDev) {
 					*thresholdedPtr = 255;
 				}
 
@@ -1003,6 +1021,7 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 
 				differencePtr++;
 				thresholdedPtr++;
+				stdDevPtr++;
 			}
 		}
 

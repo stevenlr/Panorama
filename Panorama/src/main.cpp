@@ -144,9 +144,9 @@ int composePanorama2()
 
 	vector<string> sourceImagesNames;
 	string baseName = "../moving_camera_datasets/people2/input_";
-	int nbImagesDataset = 4;
+	int nbImagesDataset = 30;
 
-	for (int i = 0; i < nbImagesDataset; i += 3) {
+	for (int i = 0; i < nbImagesDataset; i += 1) {
 		stringstream sstr;
 
 		sstr << baseName << setfill('0') << setw(4) << (i + 1) << ".jpg";
@@ -177,7 +177,6 @@ int composePanorama2()
 	}
 
 	cout << endl;
-	return 0;
 
 	ImagesRegistry images2;
 
