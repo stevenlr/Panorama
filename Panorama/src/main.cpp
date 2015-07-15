@@ -197,7 +197,7 @@ int composePanorama2()
 	sequence.addIntermediateFramesToScene(scenes[0]);
 	scenes[0].setEstimatedFocalLength(sequence.estimateFocalLength());
 
-	float width = 2048;
+	float width = 3000;
 	int projSizeX = static_cast<int>(width);
 	int projSizeY = static_cast<int>(width / 2);
 	
