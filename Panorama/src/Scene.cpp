@@ -389,88 +389,6 @@ void Scene::bundleAdjustment(const ImagesRegistry &images, const MatchGraph &mat
 
 #define NB_CLUSTERS 4
 
-/*
-struct PixelModel {
-	Vec3b centers[NB_CLUSTERS];
-	float weights[NB_CLUSTERS];
-	Vec3b average;
-};
-
-class LabelizedImage {
-public:
-	LabelizedImage(int width, int height) :
-		_width(width), _height(height), _gco(width, height, NB_CLUSTERS)
-	{
-		_data = new PixelModel[width * height];
-		_gco.setDataCostFunctor(new DataCostFunctor(this));
-		_gco.setSmoothCostFunctor(new SmoothCostFunctor(this));
-	}
-
-	~LabelizedImage()
-	{
-		delete[] _data;
-	}
-
-	PixelModel &operator()(int x, int y)
-	{
-		return _data[y * _width + x];
-	}
-
-	void setLabel(int x, int y, int label)
-	{
-		_gco.setLabel(y * _width + x, label);
-	}
-
-	Vec3b getColor(int x, int y)
-	{
-		return _data[y * _width + x].centers[_gco.whatLabel(y * _width + x)];
-	}
-
-	struct DataCostFunctor : public GCoptimization::DataCostFunctor {
-		DataCostFunctor(LabelizedImage *image) : _image(image) {}
-
-		virtual GCoptimization::EnergyTermType compute(GCoptimization::SiteID s, GCoptimization::LabelID l)
-		{
-			Vec3b diff = _image->_data[s].average - _image->_data[s].centers[l];
-			double dist = diff[0] * diff[0] + diff[1] * diff[1] + diff[2] * diff[2];
-
-			return static_cast<GCoptimization::EnergyTermType>(dist);
-		}
-
-	private:
-		LabelizedImage *_image;
-	};
-
-	struct SmoothCostFunctor : public GCoptimization::SmoothCostFunctor {
-		SmoothCostFunctor(LabelizedImage *image) : _image(image) {}
-
-		virtual GCoptimization::EnergyTermType compute(GCoptimization::SiteID s1, GCoptimization::SiteID s2, GCoptimization::LabelID l1, GCoptimization::LabelID l2)
-		{
-			double dist = 0;
-
-			for (int i = 0; i < 3; ++i) {
-				dist = max(abs(static_cast<double>(_image->_data[s1].centers[l1][i]) - static_cast<double>(_image->_data[s2].centers[l2][i])), dist);
-			}
-
-			return static_cast<GCoptimization::EnergyTermType>(min(100.0, dist));
-		}
-
-	private:
-		LabelizedImage *_image;
-	};
-
-	void update()
-	{
-		_gco.expansion(1);
-	}
-
-private:
-	int _width;
-	int _height;
-	PixelModel *_data;
-	GCoptimizationGridGraph _gco;
-};*/
-
 bool compareVec3f(Vec3f first, Vec3f second)
 {
 	float d1 = first.dot(first);
@@ -510,14 +428,10 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 
 		translation.at<double>(0, 2) = -size.width / 2;
 		translation.at<double>(1, 2) = -size.height / 2;
-		homography = homography * translation;
+		homography = translation.inv() * homography * translation;
 
-		for (int y = 0; y < size.height; ++y) {
-			for (int x = 0; x < size.width; ++x) {
-				if (y != 0 && x != 0 && y != size.height - 1 && x != size.width - 1) {
-					continue;
-				}
-
+		for (int y = 0; y < size.height; y += size.height - 1) {
+			for (int x = 0; x < size.width; x += size.width - 1) {
 				Mat_<double> point = Mat_<double>::ones(Size(1, 3));
 
 				point(0, 0) = x;
@@ -525,14 +439,8 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 
 				point = homography * point;
 
-				point(0, 0) /= _estimatedFocalLength;
-				point(1, 0) /= _estimatedFocalLength;
-
-				double angleX = atan2(point(0, 0), point(2, 0));
-				double angleY = atan2(point(1, 0), sqrt(point(0, 0) * point(0, 0) + point(2, 0) * point(2, 0)));
-
-				int px = static_cast<int>((angleX / PI + 0.5) * projSizeX);
-				int py = static_cast<int>((angleY * 2 / PI + 0.5) * projSizeY);
+				int px = static_cast<int>(point(0, 0) / point(2, 0));
+				int py = static_cast<int>(point(1, 0) / point(2, 0));
 
 				minCorner.x = std::min(minCorner.x, px);
 				minCorner.y = std::min(minCorner.y, py);
@@ -541,37 +449,15 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 			}
 		}
 
-		Mat invHomography = homography.inv();
-		Mat map(Size(maxCorner.x - minCorner.x + 1, maxCorner.y - minCorner.y + 1), CV_32FC2, Scalar(-1, -1));
+		translation.at<double>(0, 2) = -minCorner.x;
+		translation.at<double>(1, 2) = -minCorner.y;
+		homography = translation * homography;
 
-		for (int x = minCorner.x; x <= maxCorner.x; ++x) {
-			double angleX = ((double) x / projSizeX - 0.5) * PI;
-
-			for (int y = minCorner.y; y <= maxCorner.y; ++y) {
-				double angleY = ((double) y / projSizeY - 0.5) * PI / 2;
-
-				Mat spacePoint = Mat::zeros(Size(1, 3), CV_64F);
-				spacePoint.at<double>(0, 0) = sin(angleX) * cos(angleY) * _estimatedFocalLength;
-				spacePoint.at<double>(1, 0) = sin(angleY) * _estimatedFocalLength;
-				spacePoint.at<double>(2, 0) = cos(angleX) * cos(angleY);
-
-				Mat transformedPoint = invHomography * spacePoint;
-				double projX = transformedPoint.at<double>(0, 0) / transformedPoint.at<double>(2, 0);
-				double projY = transformedPoint.at<double>(1, 0) / transformedPoint.at<double>(2, 0);
-
-				if (projX < 0 || projX >= size.width || projY < 0 || projY >= size.height) {
-					continue;
-				}
-
-				map.at<Vec2f>(y - minCorner.y, x - minCorner.x)[0] = static_cast<float>(projX);
-				map.at<Vec2f>(y - minCorner.y, x - minCorner.x)[1] = static_cast<float>(projY);
-			}
-		}
-		
 		Mat maskNormal(size, CV_8U, Scalar(255));
+		Size warpedSize(maxCorner.x - minCorner.x, maxCorner.y - minCorner.y);
 
-		remap(maskNormal, warpedMasks[i], map, Mat(), INTER_LINEAR, BORDER_CONSTANT);
-		remap(img, warpedImages[i], map, Mat(), INTER_LINEAR, BORDER_CONSTANT);
+		warpPerspective(img, warpedImages[i], homography, warpedSize);
+		warpPerspective(maskNormal, warpedMasks[i], homography, warpedSize);
 		corners[i] = make_pair(minCorner, maxCorner);
 
 		finalMinCorner.x = std::min(finalMinCorner.x, minCorner.x);
@@ -585,11 +471,6 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 	elapsedTime = static_cast<float>(clock() - start) / _nbImages / CLOCKS_PER_SEC;
 	cout << endl << "  Warping average: " << elapsedTime << "s" << endl;
 
-	finalMinCorner.x = std::max(finalMinCorner.x, 0);
-	finalMinCorner.y = std::max(finalMinCorner.y, 0);
-	finalMaxCorner.x = std::min(finalMaxCorner.x, projSizeX - 1);
-	finalMaxCorner.y = std::min(finalMaxCorner.y, projSizeY - 1);
-
 	start = clock();
 
 	Size finalImageSize(finalMaxCorner.x - finalMinCorner.x + 1, finalMaxCorner.y - finalMinCorner.y + 1);
@@ -602,9 +483,9 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 	for (int i = 0; i < _nbImages; ++i) {
 		finalImage.setTo(0);
 		warpedImages[i].copyTo(finalImage.colRange(static_cast<int>(corners[i].first.x - finalMinCorner.x),
-													static_cast<int>(corners[i].second.x - finalMinCorner.x + 1))
+													static_cast<int>(corners[i].second.x - finalMinCorner.x))
 										 .rowRange(static_cast<int>(corners[i].first.y - finalMinCorner.y),
-													static_cast<int>(corners[i].second.y - finalMinCorner.y + 1)));
+													static_cast<int>(corners[i].second.y - finalMinCorner.y)));
 		videoWriter.write(finalImage);
 
 		stringstream sstr;
@@ -689,7 +570,6 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 	}*/
 	
 	TermCriteria criteria(CV_TERMCRIT_ITER + CV_TERMCRIT_EPS, 10, 1.0);
-	//LabelizedImage labelizedImage(finalImageSize.width, finalImageSize.height);
 
 	for (int y = 0; y < finalImageSize.height; ++y) {
 		cout << "\r  Modeling background " << static_cast<int>(static_cast<float>(y + 1) / finalImageSize.height * 100) << "%" << flush;
@@ -699,7 +579,6 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 			int nbValues = 0;
 			int px = x + finalMinCorner.x;
 			int py = y + finalMinCorner.y;
-			//PixelModel &model = labelizedImage(x, y);
 
 			for (int i = 0; i < _nbImages; ++i) {
 				int ix = static_cast<int>(px - corners[i].first.x);
@@ -715,14 +594,6 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 			}
 
 			if (nbValues == 0) {
-				/*model.average = Vec3d(0, 0, 0);
-				labelizedImage.setLabel(x, y, 0);
-				
-				for (int l = 0; l < NB_CLUSTERS; ++l) {
-					model.weights[l] = 1;
-					model.centers[l] = Vec3d(0, 0, 0);
-				}*/
-
 				continue;
 			}
 
@@ -757,7 +628,6 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 			meanR /= nbValues;
 			meanG /= nbValues;
 			meanB /= nbValues;
-			//model.average = Vec3b(meanR, meanG, meanB);
 
 			sort(valuesVec.begin(), valuesVec.end(), compareVec3f);
 
@@ -799,7 +669,7 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 
 			madImage(y, x) = mad;
 
-			const float minStdDev = 6;
+			const float minStdDev = 21;
 
 			if (stdDev > minStdDev && nbValues >= NB_CLUSTERS) {
 				kmeans(values, NB_CLUSTERS, labels, criteria, criteria.maxCount, KMEANS_RANDOM_CENTERS, centers);
@@ -868,117 +738,15 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 				finalImage.at<Vec3b>(y, x)[0] = saturate_cast<uchar>(centers.at<uchar>(clusterMax, 0));
 				finalImage.at<Vec3b>(y, x)[1] = saturate_cast<uchar>(centers.at<uchar>(clusterMax, 1));
 				finalImage.at<Vec3b>(y, x)[2] = saturate_cast<uchar>(centers.at<uchar>(clusterMax, 2));
-
-				/*for (int l = 0; l < NB_CLUSTERS; ++l) {
-					model.weights[l] = static_cast<float>(samplesCount[l]) / nbValues;
-					model.centers[l] = Vec3b(centers.at<uchar>(l, 0), centers.at<uchar>(l, 1), centers.at<uchar>(l, 2));
-				}
-
-				labelizedImage.setLabel(x, y, clusterMax);*/
 			} else {
 				finalImage.at<Vec3b>(y, x)[0] = saturate_cast<uchar>(meanR);
 				finalImage.at<Vec3b>(y, x)[1] = saturate_cast<uchar>(meanG);
 				finalImage.at<Vec3b>(y, x)[2] = saturate_cast<uchar>(meanB);
-
-				/*for (int l = 0; l < NB_CLUSTERS; ++l) {
-					model.weights[l] = 1;
-					model.centers[l] = model.average;
-				}
-
-				labelizedImage.setLabel(x, y, 0);*/
 			}
 		}
 	}
 
 	cout << endl;
-
-	/*{
-		int permutation[NB_CLUSTERS];
-		int bestPermutation[NB_CLUSTERS];
-		int nbPermutation = 1;
-		int offset[2][2] = {{-1, 0}, {0, -1}};
-
-		for (int i = 0; i < NB_CLUSTERS; ++i) {
-			nbPermutation *= i;
-			permutation[i] = i;
-		}
-
-		for (int y = 0; y < finalImageSize.height; ++y) {
-			cout << "\r  Sorting labels " << static_cast<int>(static_cast<float>(y + 1) / finalImageSize.height * 100) << "%" << flush;
-
-			for (int x = 0; x < finalImageSize.width; ++x) {
-				PixelModel &model = labelizedImage(x, y);
-				double bestDist = numeric_limits<double>::max();
-
-				do {
-					double dist = 0;
-
-					for (int i = 0; i < 2; ++i) {
-						int xx = x + offset[i][0];
-						int yy = y + offset[i][1];
-
-						if (xx < 0 || xx >= finalImageSize.width || yy < 0 || yy >= finalImageSize.height) {
-							continue;
-						}
-
-						PixelModel &model0 = labelizedImage(xx, yy);
-
-						for (int l = 0; l < NB_CLUSTERS; ++l) {
-							double clusterDist = 0;
-
-							clusterDist = max(static_cast<double>(abs(model.centers[permutation[l]][0] - model0.centers[l][0])), clusterDist);
-							clusterDist = max(static_cast<double>(abs(model.centers[permutation[l]][1] - model0.centers[l][1])), clusterDist);
-							clusterDist = max(static_cast<double>(abs(model.centers[permutation[l]][2] - model0.centers[l][2])), clusterDist);
-
-							dist += clusterDist;
-						}
-					}
-
-					if (dist < bestDist) {
-						bestDist = dist;
-						copy_n(permutation, NB_CLUSTERS, bestPermutation);
-					}
-				} while (next_permutation(permutation, permutation + NB_CLUSTERS));
-
-				Vec3b centers[NB_CLUSTERS];
-				float weights[NB_CLUSTERS];
-
-				copy_n(model.centers, NB_CLUSTERS, centers);
-				copy_n(model.weights, NB_CLUSTERS, weights);
-
-				for (int i = 0; i < NB_CLUSTERS; ++i) {
-					model.centers[i] = centers[bestPermutation[i]];
-					model.weights[i] = weights[bestPermutation[i]];
-				}
-			}
-		}
-	}
-
-	cout << endl;*/
-
-	/*for (int i = 0; i < NB_CLUSTERS; ++i) {
-		for (int y = 0; y < finalImageSize.height; ++y) {
-			cout << "\r  Extracting background " << static_cast<int>(static_cast<float>(y + 1) / finalImageSize.height * 100) << "%" << flush;
-
-			for (int x = 0; x < finalImageSize.width; ++x) {
-				Vec3d color = labelizedImage.getColor(x, y);
-				PixelModel &model = labelizedImage(x, y);
-
-				color = model.centers[i];
-
-				finalImage.at<Vec3b>(y, x)[0] = saturate_cast<uchar>(color[0]);
-				finalImage.at<Vec3b>(y, x)[1] = saturate_cast<uchar>(color[1]);
-				finalImage.at<Vec3b>(y, x)[2] = saturate_cast<uchar>(color[2]);
-			}
-		}
-
-		stringstream sstr;
-		sstr << "output-gco-" << i << ".jpg";
-		imwrite(sstr.str(), finalImage);
-
-		//labelizedImage.update();
-		cout << endl;
-	}*/
 
 	for (int interestImage = 0; interestImage < _nbImages; ++interestImage) {
 		Mat baseImage = images.getImage(getImage(interestImage));
@@ -989,38 +757,22 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 
 		translation.at<double>(0, 2) = -size.width / 2;
 		translation.at<double>(1, 2) = -size.height / 2;
-		homography = homography * translation;
+		homography = translation.inv() * homography * translation;
+		translation.at<double>(0, 2) = finalMinCorner.x;
+		translation.at<double>(1, 2) = finalMinCorner.y;
+		homography = homography.inv() * translation;
 
 		unwarp.setTo(Scalar(-1, -1));
 
 		cout << "\r  Extracting foreground " << (interestImage + 1) << "/" << _nbImages << flush;
 
-		for (int y = 0; y < size.height; ++y) {
-			for (int x = 0; x < size.width; ++x) {
-				Mat_<double> point = Mat_<double>::ones(Size(1, 3));
-
-				point(0, 0) = x;
-				point(1, 0) = y;
-
-				point = homography * point;
-
-				point(0, 0) /= _estimatedFocalLength;
-				point(1, 0) /= _estimatedFocalLength;
-
-				double angleX = atan2(point(0, 0), point(2, 0));
-				double angleY = atan2(point(1, 0), sqrt(point(0, 0) * point(0, 0) + point(2, 0) * point(2, 0)));
-
-				unwarp(y, x)[0] = static_cast<float>(((angleX / PI + 0.5) * projSizeX) - finalMinCorner.x);
-				unwarp(y, x)[1] = static_cast<float>(((angleY * 2 / PI + 0.5) * projSizeY) - finalMinCorner.y);
-			}
-		}
-
 		Mat unwarpedBackground, difference, cleaned, unwarpedMad;
 		Mat stdDev, mean;
 		vector<Mat> channels(3);
 
-		remap(finalImage, unwarpedBackground, unwarp, Mat(), INTER_LINEAR, BORDER_CONSTANT);
-		remap(madImage, unwarpedMad, unwarp, Mat(), INTER_LINEAR, BORDER_CONSTANT);
+		warpPerspective(finalImage, unwarpedBackground, homography, baseImage.size());
+		warpPerspective(madImage, unwarpedMad, homography, baseImage.size());
+
 		absdiff(unwarpedBackground, baseImage, difference);
 		split(difference, channels);
 		difference = max(channels[2], max(channels[1], channels[0]));
@@ -1054,16 +806,11 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 		sstr << "output_foreground_" << setfill('0') << setw(4) << (interestImage + 1) << ".png";
 		imwrite(sstr.str(), thresholded);
 
-		sstr.str("");
-		sstr << "output_difference_" << setfill('0') << setw(4) << (interestImage + 1) << ".png";
-		imwrite(sstr.str(), difference);
-
 		int closingRadius = 2;
 		Mat element = getStructuringElement(MORPH_RECT, Size(closingRadius * 2 + 1, closingRadius * 2 + 1), Point(closingRadius, closingRadius));
+		Mat m0, m1;
 
 		erode(thresholded, cleaned, element);
-
-		Mat m0, m1;
 
 		element = getStructuringElement(MORPH_RECT, Size(3, 3), Point(1, 1));
 		m1 = cleaned.clone();
@@ -1074,16 +821,8 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 			cv::min(m1, thresholded, m1);
 		} while (countNonZero(abs(m0 - m1)) != 0);
 
-		cleaned = m1.clone();
-		dilate(cleaned, m1, element);
-
-		do {
-			m0 = m1.clone();
-			erode(m0, m1, element);
-			cv::max(m1, cleaned, m1);
-		} while (countNonZero(abs(m0 - m1)) != 0);
-
-		cleaned = m1;
+		dilate(m1, cleaned, element);
+		erode(cleaned, cleaned, element);
 
 		sstr.str("");
 		sstr << "output_foreground_clean_" << setfill('0') << setw(4) << (interestImage + 1) << ".png";
