@@ -1,11 +1,163 @@
 #include "ImageRegistration.h"
 
+#include <iostream>
 #include <set>
 
 #include <opencv2/calib3d/calib3d.hpp>
 
 using namespace std;
 using namespace cv;
+
+namespace {
+	Mat homographyToParameters(Mat homography)
+	{
+		Mat_<double> parameters(8, 1);
+
+		parameters(0, 0) = homography.at<double>(0, 0) - 1;
+		parameters(1, 0) = homography.at<double>(1, 0);
+		parameters(2, 0) = homography.at<double>(2, 0);
+		parameters(3, 0) = homography.at<double>(0, 1);
+		parameters(4, 0) = homography.at<double>(1, 1) - 1;
+		parameters(5, 0) = homography.at<double>(2, 1);
+		parameters(6, 0) = homography.at<double>(0, 2);
+		parameters(7, 0) = homography.at<double>(1, 2);
+
+		return parameters;
+	}
+
+	Mat parametersToHomography(Mat parameters)
+	{
+		Mat_<double> homography(3, 3);
+
+		homography(0, 0) = parameters.at<double>(0, 0) + 1;
+		homography(1, 0) = parameters.at<double>(1, 0);
+		homography(2, 0) = parameters.at<double>(2, 0);
+		homography(0, 1) = parameters.at<double>(3, 0);
+		homography(1, 1) = parameters.at<double>(4, 0) + 1;
+		homography(2, 1) = parameters.at<double>(5, 0);
+		homography(0, 2) = parameters.at<double>(6, 0);
+		homography(1, 2) = parameters.at<double>(7, 0);
+		homography(2, 2) = 1;
+
+		return homography;
+	}
+
+	Mat computeResidues(vector<pair<Point2d, Point2d>> &matchPoints, Mat homography)
+	{
+		Mat residues = Mat::zeros(Size(1, matchPoints.size()), CV_64F);
+		Mat_<double> pointH = Mat::ones(Size(1, 3), CV_64F);
+		int i = 0;
+
+		for (auto &m : matchPoints)
+		{
+			pointH(0, 0) = m.first.x;
+			pointH(1, 0) = m.first.y;
+			pointH(2, 0) = 1;
+
+			pointH = homography * pointH;
+			pointH /= pointH(2, 0);
+
+			Point2d transformedPoint(pointH(0, 0), pointH(1, 0));
+			Point2d diff = transformedPoint - m.second;
+
+			residues.at<double>(i++, 0) = diff.x * diff.x + diff.y * diff.y;
+		}
+
+		return residues;
+	}
+
+	double computeError(vector<pair<Point2d, Point2d>> &matchPoints, Mat homography)
+	{
+		double dist = 0;
+		Mat_<double> pointH = Mat::ones(Size(1, 3), CV_64F);
+
+		for (auto &m : matchPoints)
+		{
+			pointH(0, 0) = m.first.x;
+			pointH(1, 0) = m.first.y;
+			pointH(2, 0) = 1;
+
+			pointH = homography * pointH;
+			pointH /= pointH(2, 0);
+
+			Point2d transformedPoint(pointH(0, 0), pointH(1, 0));
+			Point2d diff = transformedPoint - m.second;
+
+			dist += diff.x * diff.x + diff.y * diff.y;
+		}
+
+		return dist;
+	}
+
+	Mat computeJacobian(vector<pair<Point2d, Point2d>> &matchPoints, Mat parameters)
+	{
+		Mat J(Size(8, matchPoints.size()), CV_64F);
+		const double eps = 0.01;
+
+		for (int i = 0; i < 8; ++i) {
+			Mat res;
+
+			parameters.at<double>(i, 0) += eps;
+			res = computeResidues(matchPoints, parametersToHomography(parameters));
+
+			parameters.at<double>(i, 0) -= 2 * eps;
+			res = res - computeResidues(matchPoints, parametersToHomography(parameters));
+			res /= 2 * eps;
+
+			res.copyTo(J.col(i));
+
+			parameters.at<double>(i, 0) += eps;
+		}
+
+		return J;
+	}
+
+	void optimizeHomography(vector<pair<Point2d, Point2d>> &matchPoints, Mat homography)
+	{
+		Mat parameters = homographyToParameters(homography);
+		double lambda = 1;
+		double v = 1.5;
+		float firstError = computeError(matchPoints, homography);
+		float lastError = firstError;
+		float error = lastError;
+
+		cout << endl;
+		
+		for (int i = 0; i < 4; ++i) {
+			Mat residues = computeResidues(matchPoints, parametersToHomography(parameters));
+			Mat J = computeJacobian(matchPoints, parameters);
+			Mat JtJ = J.t() * J;
+			Mat Jtr = J.t() * residues;
+			Mat invTerm;
+			Mat incr ;
+			bool ill = true;
+
+			while (ill) {
+				invTerm = JtJ + lambda * Mat::diag(JtJ.diag());
+				invTerm = invTerm.inv();
+				incr = invTerm * Jtr;
+
+				error = computeError(matchPoints, parametersToHomography(parameters - incr));
+				cout << (lastError - error) << " ";
+				ill = lastError < error;
+
+				if (ill) {
+					lambda *= v;
+					cout << lambda << endl;
+				}
+			}
+
+			parameters -= incr;
+
+			cout << (error - lastError) << " ";
+			cout << endl;
+			lastError = error;
+		}
+
+		cout << endl;
+		cout << firstError << " " << error << endl;
+	}
+}
 
 void computeHomography(const ImageDescriptor &sceneDescriptor, const ImageDescriptor &objectDescriptor, const ImageMatchInfos &match, ComputeHomographyOutput &output)
 {
@@ -59,10 +211,13 @@ void computeHomography(const ImageDescriptor &sceneDescriptor, const ImageDescri
 	int nbOverlaps = 0;
 	int nbInliers = 0;
 	vector<uchar>::const_iterator inliersMask2It = inliersMask2.cbegin();
+	vector<pair<Point2d, Point2d>> matchPoints;
+	Point2f objectOffset(objectDescriptor.width / 2, objectDescriptor.height / 2);
+	Point2f sceneOffset(sceneDescriptor.width / 2, sceneDescriptor.height / 2);
 
 	while (matchesIt != match.matches.cend()) {
 		if (*inliersMaskIt) {
-			Point2d point = objectDescriptor.keypoints[matchesIt->second].pt;
+			Point2f point = objectDescriptor.keypoints[matchesIt->second].pt;
 			Mat pointH = Mat::ones(Size(1, 3), CV_64F);
 
 			pointH.at<double>(0, 0) = point.x - objectDescriptor.width / 2;
@@ -77,6 +232,8 @@ void computeHomography(const ImageDescriptor &sceneDescriptor, const ImageDescri
 
 				if (*inliersMask2It) {
 					nbInliers++;
+					matchPoints.push_back(make_pair(objectDescriptor.keypoints[matchesIt->second].pt - objectOffset,
+						sceneDescriptor.keypoints[matchesIt->first].pt - sceneOffset));
 				} else {
 					*inliersMaskIt = 0;
 				}
@@ -88,6 +245,8 @@ void computeHomography(const ImageDescriptor &sceneDescriptor, const ImageDescri
 		matchesIt++;
 		inliersMaskIt++;
 	}
+
+	optimizeHomography(matchPoints, homography);
 
 	output.nbInliers = nbInliers;
 	output.nbOverlaps = nbOverlaps;

@@ -32,7 +32,7 @@ int composePanorama()
 
 	vector<string> sourceImagesNames;
 	string baseName = "../moving_camera_datasets/people1/input_";
-	int nbImagesDataset = 30;
+	int nbImagesDataset = 10;
 
 	for (int i = 0; i < nbImagesDataset; i += 1) {
 		stringstream sstr;
