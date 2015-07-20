@@ -104,7 +104,7 @@ void ImageSequence::addImage(int imageId, const ImagesRegistry &images)
 
 	float overlapRatio2 = static_cast<float>(nbOverlap) / (mask.size().width * mask.size().height);
 
-	if (std::min(overlapRatio, overlapRatio2) < 0.6) {
+	if (std::min(overlapRatio, overlapRatio2) < 0.75) {
 		_keyFrames.push_back(imageId);
 		_homographies.push_back(Mat::eye(Size(3, 3), CV_64F));
 	} else {
