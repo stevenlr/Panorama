@@ -26,12 +26,12 @@
 using namespace std;
 using namespace cv;
 
-int composePanorama()
+int composePanorama(const string &configFilename)
 {
 	initModule_features2d();
 	initModule_nonfree();
 
-	Configuration::getInstance()->loadConfig("default.xml");
+	Configuration::getInstance()->loadConfig(configFilename);
 
 	vector<string> sourceImagesNames;
 	string baseName = "../moving_camera_datasets/people1/input_";
@@ -116,7 +116,12 @@ int composePanorama()
 
 int main(int argc, char *argv[])
 {
-	composePanorama();
+	if (argc < 2) {
+		cerr << "Config file required" << endl;
+		return 1;
+	}
+
+	composePanorama(string(argv[1]));
 	waitKey(0);
 	cin.get();
 
