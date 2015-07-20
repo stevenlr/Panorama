@@ -11,11 +11,10 @@
 #include <opencv2/stitching/detail/blenders.hpp>
 #include <opencv2/calib3d/calib3d.hpp>
 #include <opencv2/highgui/highgui.hpp>
-#include "gco/GCoptimization.h"
 
 #include "Constants.h"
 #include "Calibration.h"
-#include "GaussianMixtureModel.h"
+#include "Configuration.h"
 
 using namespace std;
 using namespace cv;
@@ -132,263 +131,6 @@ int Scene::getRootNode() const
 	return node;
 }
 
-Mat_<double> Scene::computeError(const ImagesRegistry &images, const MatchGraph &matchGraph, int nbFeaturesTotal) const
-{
-	Mat_<double> error(Size(1, nbFeaturesTotal * 2));
-	int errorId = 0;
-
-	for (int i = 0; i < _nbImages; ++i) {
-		Mat_<double> Hscene = _cameras[i].getH().inv();
-		const vector<KeyPoint> ptsScene = images.getDescriptor(_images[i]).keypoints;
-
-		for (int j = 0; j < _nbImages; ++j) {
-			if (i == j) {
-				continue;
-			}
-
-			const ImageMatchInfos &match = matchGraph.getImageMatchInfos(i, j);
-			const vector<KeyPoint> ptsObject = images.getDescriptor(_images[j]).keypoints;
-			Mat_<double> Hobj = _cameras[j].getH();
-			int nbMatches = match.matches.size();
-
-			for (int e = 0; e < nbMatches; ++e) {
-				if (match.inliersMask[e]) {
-					Point2d ptObject = ptsObject[match.matches[e].second].pt;
-					Point2d ptScene = ptsScene[match.matches[e].first].pt;
-
-					Mat_<double> m(Size(1, 3), CV_64F);
-
-					m(0, 0) = ptObject.x + _cameras[j].ppx;
-					m(1, 0) = ptObject.y + _cameras[j].ppy;
-					m(2, 0) = 1;
-
-					m = Hscene * Hobj * m;
-
-					ptObject.x = m(0, 0) / m(2, 0) - _cameras[i].ppx;
-					ptObject.y = m(1, 0) / m(2, 0) - _cameras[i].ppy;
-
-					Point2d distance = ptObject - ptScene;
-
-					error(errorId++, 0) = distance.x;
-					error(errorId++, 0) = distance.y;
-
-					cout << norm(distance) << endl;
-				}
-			}
-		}
-	}
-
-	return error;
-}
-
-#define PARAM_ROTATION_X 0
-#define PARAM_ROTATION_Y 1
-#define PARAM_ROTATION_Z 2
-#define PARAM_FOCAL_LENGTH 3
-
-cv::Mat_<double> Scene::getErrorDerivative(int paramScene, int paramObject, bool firstAsDerivative, Point2d pointScene, Point2d pointObj) const
-{
-	Mat_<double> matPointObjDer = Mat::ones(Size(1, 3), CV_64F);
-	Mat_<double> matPointObj = Mat::ones(Size(1, 3), CV_64F);
-	int paramType = (firstAsDerivative) ? paramScene % 4 : paramObject % 4;
-	int imgScene = paramScene / 4;
-	int imgObject = paramObject / 4;
-
-	matPointObjDer(0, 0) = pointObj.x;
-	matPointObjDer(1, 0) = pointObj.y;
-
-	matPointObj(0, 0) = pointObj.x;
-	matPointObj(1, 0) = pointObj.y;
-
-	if (firstAsDerivative) {
-		if (paramType == PARAM_FOCAL_LENGTH) {
-			Mat_<double> derK = Mat::zeros(Size(3, 3), CV_64F);
-
-			derK(0, 0) = 1;
-			derK(1, 1) = _cameras[imgScene].getAspectRatio();
-
-			derK = -_cameras[imgScene].getK().inv() * derK * _cameras[imgScene].getK().inv();
-			matPointObjDer = _cameras[imgScene].getR().inv() * derK * _cameras[imgObject].getH() * matPointObjDer;
-		} else {
-			Mat_<double> derR = Mat::zeros(Size(3, 3), CV_64F);
-
-			if (paramType == PARAM_ROTATION_X) {
-				derR(1, 2) = -1;
-				derR(2, 1) = 1;
-			} else if (paramType == PARAM_ROTATION_Y) {
-				derR(2, 0) = -1;
-				derR(0, 2) = 1;
-			} else if (paramType == PARAM_ROTATION_Z) {
-				derR(0, 1) = -1;
-				derR(1, 0) = 1;
-			}
-
-			matPointObjDer = _cameras[imgScene].getK() * _cameras[imgScene].getR() * derR * _cameras[imgObject].getH().inv() * matPointObjDer;
-		}
-	} else {
-		if (paramType == PARAM_FOCAL_LENGTH) {
-			Mat_<double> derK = Mat::zeros(Size(3, 3), CV_64F);
-
-			derK(0, 0) = 1;
-			derK(1, 1) = _cameras[imgObject].getAspectRatio();
-
-			derK = -_cameras[imgObject].getK().inv() * derK * _cameras[imgObject].getK().inv();
-			matPointObjDer = _cameras[imgScene].getH() * _cameras[imgObject].getR().inv() * derK * matPointObjDer;
-		} else {
-			Mat_<double> derR = Mat::zeros(Size(3, 3), CV_64F);
-
-			if (paramType == PARAM_ROTATION_X) {
-				derR(1, 2) = -1;
-				derR(2, 1) = 1;
-			} else if (paramType == PARAM_ROTATION_Y) {
-				derR(2, 0) = -1;
-				derR(0, 2) = 1;
-			} else if (paramType == PARAM_ROTATION_Z) {
-				derR(0, 1) = -1;
-				derR(1, 0) = 1;
-			}
-
-			derR = -_cameras[imgObject].getR().inv() * _cameras[imgObject].getR() * derR * _cameras[imgObject].getR().inv();
-			matPointObjDer = _cameras[imgScene].getH() * derR * _cameras[imgObject].getK().inv() * matPointObjDer;
-		}
-	}
-
-	matPointObj = _cameras[imgScene].getH().inv() * _cameras[imgObject].getH() * matPointObj;
-
-	Mat_<double> homogeneousDer = Mat::zeros(Size(3, 2), CV_64F);
-
-	homogeneousDer(0, 0) = 1 / matPointObj(2, 0);
-	homogeneousDer(1, 1) = 1 / matPointObj(2, 0);
-	homogeneousDer(0, 2) = -matPointObj(0, 0) / (matPointObj(2, 0) * matPointObj(2, 0));
-	homogeneousDer(1, 2) = -matPointObj(1, 0) / (matPointObj(2, 0) * matPointObj(2, 0));
-
-	return homogeneousDer * matPointObjDer * -1;
-}
-
-Mat_<double> Scene::getSingleError(int imgScene, int imgObj, Point2d pointScene, Point2d pointObj) const
-{
-	Mat_<double> m(Size(1, 3), CV_64F);
-
-	m(0, 0) = pointObj.x + _cameras[imgObj].ppx;
-	m(1, 0) = pointObj.y + _cameras[imgObj].ppy;
-	m(2, 0) = 1;
-
-	m = _cameras[imgScene].getH().inv() * _cameras[imgObj].getH() * m;
-
-	pointObj.x = m(0, 0) / m(2, 0) - _cameras[imgScene].ppx;
-	pointObj.y = m(1, 0) / m(2, 0) - _cameras[imgScene].ppy;
-
-	Point2d distance = pointObj - pointScene;
-
-	Mat_<double> pointMat(Size(1, 2), CV_64F);
-
-	pointMat(0, 0) = distance.x;
-	pointMat(1, 0) = distance.y;
-
-	return pointMat;
-}
-
-void Scene::bundleAdjustment(const ImagesRegistry &images, const MatchGraph &matchGraph)
-{
-	for (int i = 0; i < _nbImages; ++i) {
-		Size size = images.getImage(_images[i]).size();
-
-		_cameras[i].focalLength = _estimatedFocalLength;
-		_cameras[i].width = size.width;
-		_cameras[i].height = size.height;
-		_cameras[i].ppx = -size.width / 2;
-		_cameras[i].ppy = -size.height / 2;
-	}
-
-	int rootNode = getRootNode();
-	Mat_<double> K0 = _cameras[rootNode].getK();
-	SVD svd;
-
-	for (int i = 0; i < _nbImages; ++i) {
-		if (i == rootNode) {
-			continue;
-		}
-
-		svd(_cameras[i].getK().inv() * getFullTransform(i).inv() * K0, SVD::FULL_UV);
-
-		Mat R = svd.u * svd.vt;
-
-		if (determinant(R) < 0) {
-			R *= -1;
-		}
-
-		Rodrigues(R, _cameras[rootNode].rotation);
-	}
-
-	int nbFeaturesTotal = 0;
-
-	for (int i = 0; i < _nbImages; ++i) {
-		for (int j = 0; j < _nbImages; ++j) {
-			if (i == j) {
-				continue;
-			}
-
-			nbFeaturesTotal += matchGraph.getImageMatchInfos(_images[i], _images[j]).nbInliers;
-		}
-	}
-
-	Mat_<double> error = computeError(images, matchGraph, nbFeaturesTotal);
-	Mat_<double> parameterDeviation = Mat::zeros(Size(_nbImages * 4, _nbImages * 4), CV_64F);
-
-	for (int i = 0; i < _nbImages; ++i) {
-		parameterDeviation(i * 4 + 0, i * 4 + 0) = PI / 16;
-		parameterDeviation(i * 4 + 1, i * 4 + 1) = PI / 16;
-		parameterDeviation(i * 4 + 2, i * 4 + 2) = PI / 16;
-		parameterDeviation(i * 4 + 3, i * 4 + 3) = _estimatedFocalLength / 10;
-	}
-
-	double lambda = 1;
-	Mat_<double> JtJ = Mat::zeros(Size(_nbImages * 4, _nbImages * 4), CV_64F);
-	Mat_<double> Jtr = Mat::zeros(Size(1, _nbImages * 4), CV_64F);
-
-	for (int i = 0; i < _nbImages * 4; ++i) {
-		double sumJtr = 0;
-
-		for (int j = 0; j < _nbImages * 4; ++j) {
-			double sumJtJ = 0;
-			const ImageMatchInfos &match = matchGraph.getImageMatchInfos(_images[i / 4], _images[j / 4]);
-			int nbMatches = match.matches.size();
-
-			for (int e = 0; e < nbMatches; ++e) {
-				if (match.inliersMask[e]) {
-					Point2d pointObj = images.getDescriptor(_images[j / 4]).keypoints[match.matches[e].second].pt;
-					Point2d pointScene = images.getDescriptor(_images[i / 4]).keypoints[match.matches[e].first].pt;
-
-					Mat_<double> errDerivative1 = getErrorDerivative(i, j, true, pointScene, pointObj);
-					Mat_<double> errDerivative2 = getErrorDerivative(i, j, false, pointScene, pointObj);
-					Mat_<double> termJtJ = errDerivative1.t() * errDerivative2;
-					
-					sumJtJ += termJtJ(0, 0);
-
-					if (j % 4 == 0) {
-						Mat_<double> singleError = getSingleError(i / 4, j / 4, pointScene, pointObj);
-						Mat_<double> termJtr = errDerivative1.t() * singleError;
-
-						sumJtr += termJtr(0, 0);
-					}
-				}
-			}
-
-			if (i == j) {
-				sumJtJ += lambda / parameterDeviation(i, j);
-			}
-
-			JtJ(i, j) = sumJtJ;
-		}
-
-		Jtr(i, 0) = sumJtr;
-	}
-
-	Mat_<double> parameters = JtJ.inv() * Jtr;
-}
-
-#define NB_CLUSTERS 4
-
 bool compareVec3f(Vec3f first, Vec3f second)
 {
 	float d1 = first.dot(first);
@@ -397,8 +139,11 @@ bool compareVec3f(Vec3f first, Vec3f second)
 	return d1 < d2;
 }
 
-Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX, int projSizeY)
+Mat Scene::composePanorama(const ImagesRegistry &images)
 {
+	const int nbClusters = Configuration::getInstance()->getNbClusters();
+	const float minStdDev = Configuration::getInstance()->getClusteringStdDevThreshold();
+	const float madForegroundThreshold = Configuration::getInstance()->getMadForegroundThreshold();
 	vector<Mat> warpedImages(_nbImages);
 	vector<Mat> warpedMasks(_nbImages);
 	vector<pair<Point2d, Point2d>> corners(_nbImages);
@@ -466,12 +211,11 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 		finalMaxCorner.y = std::max(finalMaxCorner.y, maxCorner.y);
 	}
 
-	cout << finalMinCorner << " " << finalMaxCorner << endl;
+	cout << endl;
 
-	elapsedTime = static_cast<float>(clock() - start) / _nbImages / CLOCKS_PER_SEC;
-	cout << endl << "  Warping average: " << elapsedTime << "s" << endl;
-
-	start = clock();
+	elapsedTime = static_cast<float>(clock() - start) / CLOCKS_PER_SEC;
+	cout << "  warping total: " << elapsedTime << "s" << endl;
+	cout << "  writing video file" << endl;
 
 	Size finalImageSize(finalMaxCorner.x - finalMinCorner.x + 1, finalMaxCorner.y - finalMinCorner.y + 1);
 	Mat finalImage(finalImageSize, images.getImage(getImage(0)).type());
@@ -498,78 +242,10 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 	finalImage.setTo(0);
 
 	int nbPixel = finalImageSize.width * finalImageSize.height;
-	/*vector<GaussianMixture> mixtures(nbPixel);
-
-	for (int y = 0; y < finalImageSize.height; ++y) {
-		cout << "\r  Building gaussian mixtures " << static_cast<int>(static_cast<float>(y) / finalImageSize.height * 100) << "%" << flush;
-
-		for (int x = 0; x < finalImageSize.width; ++x) {
-			int px = x + finalMinCorner.x;
-			int py = y + finalMinCorner.y;
-			GaussianMixture &mixture = mixtures[y * finalImageSize.width + x];
-			int nbFrames = 0;
-
-			finalImage.at<Vec3b>(y, x)[0] = 0;
-			finalImage.at<Vec3b>(y, x)[1] = 0;
-			finalImage.at<Vec3b>(y, x)[2] = 0;
-
-			for (int i = 0; i < _nbImages; ++i) {
-				int ix = static_cast<int>(px - corners[i].first.x);
-				int iy = static_cast<int>(py - corners[i].first.y);
-
-				if (ix < 0 || iy < 0 || ix >= warpedMasks[i].size().width || iy >= warpedMasks[i].size().height) {
-					continue;
-				}
-
-				if (warpedMasks[i].at<uchar>(iy, ix)) {
-					nbFrames++;
-				}
-			}
-
-			if (nbFrames == 0) {
-				continue;
-			}
-
-			new(&mixture) GaussianMixture(nbFrames);
-
-			for (int i = 0; i < _nbImages; ++i) {
-				int ix = static_cast<int>(px - corners[i].first.x);
-				int iy = static_cast<int>(py - corners[i].first.y);
-
-				if (ix < 0 || iy < 0 || ix >= warpedMasks[i].size().width || iy >= warpedMasks[i].size().height) {
-					continue;
-				}
-
-				if (warpedMasks[i].at<uchar>(iy, ix)) {
-					double mask = warpedMasks[i].at<uchar>(iy, ix) / 255.0;
-					Vec3b color = warpedImages[i].at<Vec3b>(iy, ix) / mask;
-
-					mixture.update(Vec3d(color[0], color[1], color[2]));
-				}
-			}
-
-			mixture.normalize();
-
-			int B = mixture.getNbBackground();
-			Vec3d color = mixture.getBackgroundColor(B);
-
-			finalImage.at<Vec3b>(y, x)[0] = saturate_cast<uchar>(color[0]);
-			finalImage.at<Vec3b>(y, x)[1] = saturate_cast<uchar>(color[1]);
-			finalImage.at<Vec3b>(y, x)[2] = saturate_cast<uchar>(color[2]);
-
-			float dev = 0;
-			float sum = 0;
-
-			for (int b = 0; b <= B; ++b) {
-				dev += mixture.getDistribution(b).deviation * mixture.getDistribution(b).deviation * mixture.getDistribution(b).weight;
-				sum += mixture.getDistribution(b).weight;
-			}
-
-			stdDevImage(y, x) = sqrt(dev / sum);
-		}
-	}*/
-	
 	TermCriteria criteria(CV_TERMCRIT_ITER + CV_TERMCRIT_EPS, 10, 1.0);
+	int *samplesCount = new int[nbClusters];
+
+	start = clock();
 
 	for (int y = 0; y < finalImageSize.height; ++y) {
 		cout << "\r  Modeling background " << static_cast<int>(static_cast<float>(y + 1) / finalImageSize.height * 100) << "%" << flush;
@@ -669,16 +345,13 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 
 			madImage(y, x) = mad;
 
-			const float minStdDev = 21;
-
-			if (stdDev > minStdDev && nbValues >= NB_CLUSTERS) {
-				kmeans(values, NB_CLUSTERS, labels, criteria, criteria.maxCount, KMEANS_RANDOM_CENTERS, centers);
+			if (stdDev > minStdDev && nbValues >= nbClusters) {
+				kmeans(values, nbClusters, labels, criteria, criteria.maxCount, KMEANS_RANDOM_CENTERS, centers);
 				centers.convertTo(centers, CV_8U);
 
-				int samplesCount[NB_CLUSTERS];
 				int clusterMax = 0;
 
-				for (int i = 0; i < NB_CLUSTERS; ++i) {
+				for (int i = 0; i < nbClusters; ++i) {
 					samplesCount[i] = 0;
 				}
 
@@ -746,7 +419,11 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 		}
 	}
 
-	cout << endl;
+	delete[] samplesCount;
+	elapsedTime = static_cast<float>(clock() - start) / CLOCKS_PER_SEC;
+	cout << endl << "  background total: " << elapsedTime << "s" << endl;
+
+	start = clock();
 
 	for (int interestImage = 0; interestImage < _nbImages; ++interestImage) {
 		Mat baseImage = images.getImage(getImage(interestImage));
@@ -790,7 +467,7 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 				float mad = *madPtr++;
 				float diff = *differencePtr;
 
-				if (diff > mad * 3 * 1.4826) {
+				if (diff > mad * madForegroundThreshold * 1.4826) {
 					*thresholdedPtr = 255;
 				}
 
@@ -830,7 +507,7 @@ Mat Scene::composePanoramaSpherical(const ImagesRegistry &images, int projSizeX,
 	}
 	
 	elapsedTime = static_cast<float>(clock() - start) / CLOCKS_PER_SEC;
-	cout << endl << "  kmeans total: " << elapsedTime << "s" << endl;
+	cout << endl << "  foreground total: " << elapsedTime << "s" << endl;
 
 	return finalImage;
 }

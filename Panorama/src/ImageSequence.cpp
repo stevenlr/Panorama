@@ -9,8 +9,8 @@
 
 #include "MatchGraph.h"
 #include "Calibration.h"
-#include "RegistrationOptimization.h"
 #include "ImageRegistration.h"
+#include "Configuration.h"
 
 using namespace std;
 using namespace cv;
@@ -104,7 +104,7 @@ void ImageSequence::addImage(int imageId, const ImagesRegistry &images)
 
 	float overlapRatio2 = static_cast<float>(nbOverlap) / (mask.size().width * mask.size().height);
 
-	if (std::min(overlapRatio, overlapRatio2) < 0.75) {
+	if (std::min(overlapRatio, overlapRatio2) < Configuration::getInstance()->getKeyframeOverlapThreshold()) {
 		_keyFrames.push_back(imageId);
 		_homographies.push_back(Mat::eye(Size(3, 3), CV_64F));
 	} else {

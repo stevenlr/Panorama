@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<configuration>
+	<keyframeOverlapThreshold>0.75</keyframeOverlapThreshold>
+	<featureMatchConfidence>0.5</featureMatchConfidence>
+	<registrationOptimizationIterations>50</registrationOptimizationIterations>
+	<imageMatchConfidenceThreshold>1.0</imageMatchConfidenceThreshold>
+	<nbClusters>4</nbClusters>
+	<clusteringStdDevThreshold>21</clusteringStdDevThreshold>
+	<madForegroundThreshold>3</madForegroundThreshold>
+</configuration>

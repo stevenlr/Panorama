@@ -13,11 +13,10 @@
 #include "Scene.h"
 #include "ImageSequence.h"
 #include "ImageRegistration.h"
+#include "Configuration.h"
 
 using namespace std;
 using namespace cv;
-
-#define CONFIDENCE_THRESHOLD 1.0
 
 ImageMatchInfos::ImageMatchInfos()
 {
@@ -66,6 +65,8 @@ ImageMatchInfos &ImageMatchInfos::operator=(const ImageMatchInfos &infos)
 
 void MatchGraph::pairwiseMatch(queue<PairwiseMatchTask> &tasks)
 {
+	const float matchConfidence = Configuration::getInstance()->getImageMatchConfidenceThreshold();
+
 	while (!tasks.empty()) {
 		PairwiseMatchTask task = tasks.front();
 
@@ -85,7 +86,7 @@ void MatchGraph::pairwiseMatch(queue<PairwiseMatchTask> &tasks)
 
 			ImageMatchInfos *matchInfos1 = &_matchInfos[sceneDescriptor.image][objectDescriptor.image];
 
-			if (matchInfos1->confidence > CONFIDENCE_THRESHOLD) {
+			if (matchInfos1->confidence > matchConfidence) {
 				MatchGraphEdge edge1;
 				edge1.sceneImage = sceneDescriptor.image;
 				edge1.objectImage = objectDescriptor.image;
@@ -169,6 +170,7 @@ void MatchGraph::computeHomography(const ImageDescriptor &sceneDescriptor, const
 
 void MatchGraph::findConnexComponents(vector<vector<bool>> &connexComponents)
 {
+	const float matchConfidence = Configuration::getInstance()->getImageMatchConfidenceThreshold();
 	int nbImages = _matchInfos.size();
 	vector<int> connexComponentsIds(nbImages);
 
@@ -179,7 +181,7 @@ void MatchGraph::findConnexComponents(vector<vector<bool>> &connexComponents)
 	_matchGraphEdges.sort(compareMatchGraphEdge);
 
 	for (const MatchGraphEdge &edge : _matchGraphEdges) {
-		if (edge.confidence < CONFIDENCE_THRESHOLD) {
+		if (edge.confidence < matchConfidence) {
 			continue;
 		}
 
@@ -342,6 +344,7 @@ void MatchGraph::makeFinalSceneTree(int treeCenter, vector<vector<bool>> &matchS
 
 void MatchGraph::createScenes(std::vector<Scene> &scenes, ImageSequence &sequence)
 {
+	const float matchConfidence = Configuration::getInstance()->getImageMatchConfidenceThreshold();
 	vector<vector<bool>> connexComponents;
 
 	findConnexComponents(connexComponents);
@@ -364,7 +367,7 @@ void MatchGraph::createScenes(std::vector<Scene> &scenes, ImageSequence &sequenc
 		}
 
 		for (const MatchGraphEdge &edge : _matchGraphEdges) {
-			if (connexComponents[i][edge.objectImage] && connexComponents[i][edge.sceneImage] && edge.confidence > CONFIDENCE_THRESHOLD) {
+			if (connexComponents[i][edge.objectImage] && connexComponents[i][edge.sceneImage] && edge.confidence > matchConfidence) {
 				edges.push_back(edge);
 				findFocalLength(_matchInfos[edge.sceneImage][edge.objectImage].homography, focalLengths);
 			}

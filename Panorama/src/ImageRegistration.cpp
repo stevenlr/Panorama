@@ -5,6 +5,8 @@
 
 #include <opencv2/calib3d/calib3d.hpp>
 
+#include "Configuration.h"
+
 using namespace std;
 using namespace cv;
 
@@ -121,8 +123,9 @@ namespace {
 		float firstError = computeError(matchPoints, homography);
 		float lastError = firstError;
 		float error = lastError;
+		int nbIterations = Configuration::getInstance()->getRegistrationOptimizationIterations();
 		
-		for (int i = 0; i < 100; ++i) {
+		for (int i = 0; i < nbIterations; ++i) {
 			Mat residues = computeResidues(matchPoints, parametersToHomography(parameters));
 			Mat J = computeJacobian(matchPoints, parameters);
 			Mat JtJ = J.t() * J;
@@ -143,9 +146,6 @@ namespace {
 				lastError = error;
 			}
 		}
-
-		cout << endl << (firstError - error) << endl;
-		cout << error << endl;
 
 		if (firstError - error > 0) {
 			return parametersToHomography(parameters);
@@ -252,7 +252,7 @@ void computeHomography(const ImageDescriptor &sceneDescriptor, const ImageDescri
 
 bool matchImages(const ImageDescriptor &sceneDescriptor, const ImageDescriptor &objectDescriptor, ImageMatchInfos &matchInfos, std::mutex *matchMutex)
 {
-	const double confidence = 0.5;
+	const double confidence = Configuration::getInstance()->getFeatureMatchConfidence();
 	Ptr<DescriptorMatcher> descriptorMatcher = DescriptorMatcher::create("BruteForce");
 	vector<vector<DMatch>> matches;
 	set<pair<int, int>> matchesSet;

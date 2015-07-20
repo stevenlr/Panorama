@@ -21,6 +21,7 @@
 #include "MatchGraph.h"
 #include "Calibration.h"
 #include "Scene.h"
+#include "Configuration.h"
 
 using namespace std;
 using namespace cv;
@@ -29,6 +30,8 @@ int composePanorama()
 {
 	initModule_features2d();
 	initModule_nonfree();
+
+	Configuration::getInstance()->loadConfig("default.xml");
 
 	vector<string> sourceImagesNames;
 	string baseName = "../moving_camera_datasets/people1/input_";
@@ -56,6 +59,7 @@ int composePanorama()
 	cout << endl;
 	images.extractFeatures();
 	cout << "Feature extraction: " << (static_cast<float>(clock() - start) / CLOCKS_PER_SEC) << "s" << endl;
+	start = clock();
 
 	ImageSequence sequence;
 
@@ -65,6 +69,7 @@ int composePanorama()
 	}
 
 	cout << endl;
+	cout << "Sequencing: " << (static_cast<float>(clock() - start) / CLOCKS_PER_SEC) << "s" << endl;
 
 	ImagesRegistry images2;
 
@@ -84,16 +89,12 @@ int composePanorama()
 
 	sequence.addIntermediateFramesToScene(scenes[0]);
 	scenes[0].setEstimatedFocalLength(sequence.estimateFocalLength());
-
-	float width = 3000;
-	int projSizeX = static_cast<int>(width);
-	int projSizeY = static_cast<int>(width / 2);
 	
 	cout << scenes.size() << " scenes built" << endl;
 
 	for (size_t i = 0; i < scenes.size(); ++i) {
 		cout << "Compositing final image " << i << endl;
-		Mat finalImage = scenes[i].composePanoramaSpherical(images, projSizeX, projSizeY);
+		Mat finalImage = scenes[i].composePanorama(images);
 
 		if (finalImage.size() == Size(0, 0)) {
 			continue;

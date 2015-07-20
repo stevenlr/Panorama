@@ -28,9 +28,8 @@ public:
 	const cv::Mat &getTransform(int image) const;
 	int getRootNode() const;
 
-	//cv::Mat composePanoramaPlanar();
 	void bundleAdjustment(const ImagesRegistry &images, const MatchGraph &matchGraph);
-	cv::Mat composePanoramaSpherical(const ImagesRegistry &images, int projSizeX, int projSizeY);
+	cv::Mat composePanorama(const ImagesRegistry &images);
 
 	cv::Mat getFullTransform(int image) const;
 
