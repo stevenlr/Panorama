@@ -242,7 +242,7 @@ void computeHomography(const ImageDescriptor &sceneDescriptor, const ImageDescri
 		inliersMaskIt++;
 	}
 
-	homography = optimizeHomography(matchPoints, homography);
+	//homography = optimizeHomography(matchPoints, homography);
 
 	output.nbInliers = nbInliers;
 	output.nbOverlaps = nbOverlaps;

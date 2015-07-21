@@ -1,0 +1,10 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<filelist>
+	<folder>../moving_camera_datasets/people1</folder>
+	<prefix>input_</prefix>
+	<extension>jpg</extension>
+	<band>4</band>
+	<startFrame>1</startFrame>
+	<endFrame>41</endFrame>
+	<frameStep>1</frameStep>
+</filelist>

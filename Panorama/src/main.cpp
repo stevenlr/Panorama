@@ -9,12 +9,14 @@
 #include <algorithm>
 #include <ctime>
 #include <iomanip>
+#include <stdexcept>
 
 #include <opencv2/core/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
 #include <opencv2/nonfree/nonfree.hpp>
 #include <opencv2/calib3d/calib3d.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
+#include <tinyxml2.h>
 
 #include "ImagesRegistry.h"
 #include "ImageSequence.h"
@@ -25,24 +27,44 @@
 
 using namespace std;
 using namespace cv;
+using namespace tinyxml2;
 
-int composePanorama(const string &configFilename)
+void loadFileList(const string &filelistFilename, vector<string> &filelist)
 {
+	XMLDocument doc;
+
+	if (doc.LoadFile(filelistFilename.c_str())) {
+		throw exception("Failed to open file list");
+	}
+
+	XMLElement *root = doc.FirstChildElement("filelist");
+
+	string folder = root->FirstChildElement("folder")->GetText();
+	string prefix = root->FirstChildElement("prefix")->GetText();
+	string extension = root->FirstChildElement("extension")->GetText();
+	int startFrame, endFrame, frameStep, band;
+	stringstream sstr;
+
+	root->FirstChildElement("startFrame")->QueryIntText(&startFrame);
+	root->FirstChildElement("endFrame")->QueryIntText(&endFrame);
+	root->FirstChildElement("frameStep")->QueryIntText(&frameStep);
+	root->FirstChildElement("band")->QueryIntText(&band);
+
+	for (int frame = startFrame; frame <= endFrame; frame += frameStep) {
+		sstr.str("");
+		sstr << folder << "/" << prefix << setw(band) << setfill('0') << frame << "." << extension;
+		filelist.push_back(sstr.str());
+	}
+}
+
+int composePanorama(const string &configFilename, const string &filelistFilename)
+{
+	vector<string> sourceImagesNames;
+
 	initModule_features2d();
 	initModule_nonfree();
-
 	Configuration::getInstance()->loadConfig(configFilename);
-
-	vector<string> sourceImagesNames;
-	string baseName = "../moving_camera_datasets/people1/input_";
-	int nbImagesDataset = 30;
-
-	for (int i = 0; i < nbImagesDataset; i += 1) {
-		stringstream sstr;
-
-		sstr << baseName << setfill('0') << setw(4) << (i + 1) << ".jpg";
-		sourceImagesNames.push_back(sstr.str());
-	}
+	loadFileList(filelistFilename, sourceImagesNames);
 
 	int nbImages = sourceImagesNames.size();
 	ImagesRegistry images;
@@ -116,12 +138,12 @@ int composePanorama(const string &configFilename)
 
 int main(int argc, char *argv[])
 {
-	if (argc < 2) {
-		cerr << "Config file required" << endl;
+	if (argc < 3) {
+		cerr << "Usage: " << argv[0] << " {config}.xml {filelist}.xml" << endl;
 		return 1;
 	}
 
-	composePanorama(string(argv[1]));
+	composePanorama(string(argv[1]), string(argv[2]));
 	waitKey(0);
 	cin.get();
 
